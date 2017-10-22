@@ -1,0 +1,18 @@
+[package]
+name = "coin"
+version = "0.1.0"
+authors = ["Martin Gul <martingul@outlook.com>"]
+
+[dependencies]
+bincode="*"
+serde="1.0.14"
+serde_derive="1.0.14"
+time="*"
+secp256k1="*"
+rand="*"
+base58="*"
+sha2="*"
+rusqlite="*"
+hex="*"
+jfs="*"
+pad="*"
