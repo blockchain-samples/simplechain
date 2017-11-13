@@ -8,6 +8,7 @@ use rusqlite::Connection;
 use base58::{FromBase58, ToBase58};
 use hex::{FromHex, ToHex};
 use secp256k1;
+use secp256k1::key::{SecretKey, PublicKey};
 
 use errors::ServerError;
 use utils;
@@ -33,142 +34,181 @@ pub struct Transaction {
     transaction: TransactionSigned // bad field name...
 }
 
-// TODO use impl syntax instead of transactions::fn() syntax
+impl TransactionContent {
+    // sign a transaction using schnorr signature
+    pub fn get_signature(
+        &self,
+        private_key: SecretKey
+    ) -> Result<Vec<u8>, ServerError> {
+        println!("SIGN TRANSACTION");
 
-// create a transaction, sign it, hash it and return it
-pub fn create(
-    sender_privkey: secp256k1::key::SecretKey,
-    sender_pubkey: Vec<u8>,
-    sender_addr: Vec<u8>,
-    receiver_addr: Vec<u8>,
-    amount: u32
-) -> Result<Transaction, ServerError> {
-    println!("CREATE TRANSACTION");
+        let secp = secp256k1::Secp256k1::new();
+        // serialize the tx content
+        let tx_content_encoded: Vec<u8> = serialize(&self, Infinite)?;
 
-    let timestamp: i64 = utils::get_current_timestamp();
+        // hash the tx content
+        let mut hasher = Sha256::new();
+        hasher.input(&tx_content_encoded);
+        let tx_content_hashed = hasher.result();
 
-    let tx_content = TransactionContent {
-        sender_addr: sender_addr,
-        sender_pubkey: sender_pubkey,
-        receiver_addr: receiver_addr,
-        amount: amount,
-        timestamp: timestamp
-    };
+        // create the input message with the hashed tx content
+        let input = secp256k1::Message::from_slice(tx_content_hashed.as_slice())?;
 
-    // sign the current tx content
-    let signature: Vec<u8> = get_signature(&tx_content, sender_privkey)?;
-
-    // create a signed tx with the signature
-    let tx_signed = TransactionSigned {
-        content: tx_content,
-        signature: signature
-    };
-
-    // get the tx id (hash) using the signed tx content
-    let id: Vec<u8> = get_id(&tx_signed)?;
-
-    //  TODO maybe rewrite this by removing the struct nesting
-    // this will be easier for cross-language
-    // Transaction {
-    //     id: ...
-    //     sender_addr: ...
-    //     ...
-    //     signature: ...
-    // }
-    // but be careful maybe recreating Transaction with TransactionContent's
-    // and TransactionSigned's fields will make the signature obsolete
-
-    // return the final tx
-    Ok(Transaction {
-        id: id,
-        transaction: tx_signed
-    })
-}
-
-pub fn new(
-    id: &String,
-    sender_addr: &String,
-    sender_pubkey: &String,
-    receiver_addr: &String,
-    amount: u32,
-    timestamp: i64,
-    signature: &String,
-) -> Result<Transaction, ServerError> {
-    let id: Vec<u8> = FromHex::from_hex(id)?;
-    let sender_addr: Vec<u8> = sender_addr.from_base58()?;
-    let sender_pubkey: Vec<u8> = FromHex::from_hex(sender_pubkey)?;
-    let receiver_addr: Vec<u8> = receiver_addr.from_base58()?;
-    let signature: Vec<u8> = FromHex::from_hex(signature)?;
-
-    Ok(Transaction {
-        id: id,
-        transaction: TransactionSigned {
-            content: TransactionContent {
-                sender_addr: sender_addr,
-                sender_pubkey: sender_pubkey,
-                receiver_addr: receiver_addr,
-                amount: amount,
-                timestamp: timestamp
-            },
-            signature: signature,
-        },
-    })
-}
-
-// create a transaction from raw bytes
-pub fn create_from_bytes(data: &Vec<u8>) -> Result<Transaction, ServerError> {
-    // read data and deserialize into a Transaction struct
-    let tx: Transaction = deserialize(&data[..])?;
-    Ok(tx)
-}
-
-// verify a transaction using the signature and the public key
-pub fn verify(tx: &Transaction) -> Result<bool, ServerError> {
-    println!("VERIFY TRANSACTION");
-
-    let secp = secp256k1::Secp256k1::new();
-    // serialize the tx content
-    let tx_encoded: Vec<u8> = serialize(&tx.transaction.content, Infinite)?;
-
-    // hash the tx content
-    let mut hasher = Sha256::new();
-    hasher.input(&tx_encoded);
-    let tx_hashed = hasher.result();
-
-    // create the input message using the hashed tx content
-    let input = secp256k1::Message::from_slice(tx_hashed.as_slice())?;
-    // retrieve sig and pbkey from the tx
-    let signature = secp256k1::schnorr::Signature::deserialize(&tx.transaction.signature);
-    let public_key = secp256k1::key::PublicKey::from_slice(
-        &secp, &tx.transaction.content.sender_pubkey
-    )?;
-
-    // verify the input message using the sig and pbkey
-    match secp.verify_schnorr(&input, &signature, &public_key) {
-        Ok(()) => Ok(true),
-        _ => Ok(false)
+        // return the signature created with the input message and private key
+        Ok(secp.sign_schnorr(&input, &private_key)?.serialize())
     }
 }
 
-// store a transaction on database (cache) for further block creation
-pub fn store_db(tx: &Transaction) -> Result<(), ServerError> {
-    println!("STORE TRANSACTION [DB]");
-    let conn = Connection::open("storage.db")?;
+impl TransactionSigned {
+    // hash a transaction to create its id
+    pub fn get_id(&self) -> Result<Vec<u8>, ServerError> {
+        // serialize the signed tx
+        let tx_signed_encoded: Vec<u8> = serialize(&self, Infinite)?;
 
-    let id = &tx.id.to_hex();
-    let sender_addr = &tx.transaction.content.sender_addr.to_base58();
-    let sender_pubkey = &tx.transaction.content.sender_pubkey.to_hex();
-    let receiver_addr = &tx.transaction.content.receiver_addr.to_base58();
-    let amount = &tx.transaction.content.amount;
-    let timestamp = &tx.transaction.content.timestamp;
-    let signature = &tx.transaction.signature.to_hex();
+        // hash everything to return the id
+        let mut hasher = Sha256::new();
+        hasher.input(&tx_signed_encoded);
+        Ok(hasher.result().as_slice().to_vec())
+    }
+}
 
-    conn.execute("INSERT INTO transactions(
-        id, sender_addr, sender_pubkey, receiver_addr, amount, timestamp, signature
-    ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        &[&*id, &*sender_addr, &*sender_pubkey, &*receiver_addr, &*amount, &*timestamp, &*signature])?;
+impl Transaction {
+    // create a transaction, sign it, hash it and return it
+    pub fn new(
+        sender_privkey: SecretKey,
+        sender_pubkey: Vec<u8>,
+        sender_addr: Vec<u8>,
+        receiver_addr: Vec<u8>,
+        amount: u32
+    ) -> Result<Transaction, ServerError> {
+        println!("CREATE TRANSACTION");
 
-    Ok(())
+        let timestamp: i64 = utils::get_current_timestamp();
+
+        let tx_content = TransactionContent {
+            sender_addr: sender_addr,
+            sender_pubkey: sender_pubkey,
+            receiver_addr: receiver_addr,
+            amount: amount,
+            timestamp: timestamp
+        };
+
+        // sign the current tx content
+        let signature: Vec<u8> = tx_content.get_signature(sender_privkey)?;
+
+        // create a signed tx with the signature
+        let tx_signed = TransactionSigned {
+            content: tx_content,
+            signature: signature
+        };
+
+        // get the tx id (hash) using the signed tx content
+        let id: Vec<u8> = tx_signed.get_id()?;
+
+        //  TODO maybe rewrite this by removing the struct nesting
+        // this will be easier for cross-language
+        // Transaction {
+        //     id: ...
+        //     sender_addr: ...
+        //     ...
+        //     signature: ...
+        // }
+        // but be careful maybe recreating Transaction with TransactionContent's
+        // and TransactionSigned's fields will make the signature obsolete
+
+        // return the final tx
+        Ok(Transaction {
+            id: id,
+            transaction: tx_signed
+        })
+    }
+
+    // return a Transaction struct filled with given field values
+    pub fn from(
+        id: &String,
+        sender_addr: &String,
+        sender_pubkey: &String,
+        receiver_addr: &String,
+        amount: u32,
+        timestamp: i64,
+        signature: &String,
+    ) -> Result<Transaction, ServerError> {
+        let id: Vec<u8> = FromHex::from_hex(id)?;
+        let sender_addr: Vec<u8> = sender_addr.from_base58()?;
+        let sender_pubkey: Vec<u8> = FromHex::from_hex(sender_pubkey)?;
+        let receiver_addr: Vec<u8> = receiver_addr.from_base58()?;
+        let signature: Vec<u8> = FromHex::from_hex(signature)?;
+
+        Ok(Transaction {
+            id: id,
+            transaction: TransactionSigned {
+                content: TransactionContent {
+                    sender_addr: sender_addr,
+                    sender_pubkey: sender_pubkey,
+                    receiver_addr: receiver_addr,
+                    amount: amount,
+                    timestamp: timestamp
+                },
+                signature: signature,
+            },
+        })
+    }
+
+    // create a transaction from raw bytes
+    pub fn from_bytes(data: &Vec<u8>) -> Result<Transaction, ServerError> {
+        // read data and deserialize into a Transaction struct
+        let tx: Transaction = deserialize(&data[..])?;
+        Ok(tx)
+    }
+
+    // verify a transaction using the signature and the public key
+    pub fn verify(&self) -> Result<bool, ServerError> {
+        println!("VERIFY TRANSACTION");
+
+        let secp = secp256k1::Secp256k1::new();
+        // serialize the tx content
+        let tx_encoded: Vec<u8> = serialize(&self.transaction.content, Infinite)?;
+
+        // hash the tx content
+        let mut hasher = Sha256::new();
+        hasher.input(&tx_encoded);
+        let tx_hashed = hasher.result();
+
+        // create the input message using the hashed tx content
+        let input = secp256k1::Message::from_slice(tx_hashed.as_slice())?;
+        // retrieve sig and pbkey from the tx
+        let signature = secp256k1::schnorr::Signature::deserialize(&self.transaction.signature);
+        let public_key = PublicKey::from_slice(
+            &secp, &self.transaction.content.sender_pubkey
+        )?;
+
+        // verify the input message using the signature and pbkey
+        match secp.verify_schnorr(&input, &signature, &public_key) {
+            Ok(()) => Ok(true),
+            _ => Ok(false)
+        }
+    }
+
+    // store a transaction on database (cache) for further block creation
+    pub fn store_db(&self) -> Result<(), ServerError> {
+        println!("STORE TRANSACTION [DB]");
+        let conn = Connection::open("storage.db")?;
+
+        let id = &self.id.to_hex();
+        let sender_addr = &self.transaction.content.sender_addr.to_base58();
+        let sender_pubkey = &self.transaction.content.sender_pubkey.to_hex();
+        let receiver_addr = &self.transaction.content.receiver_addr.to_base58();
+        let amount = &self.transaction.content.amount;
+        let timestamp = &self.transaction.content.timestamp;
+        let signature = &self.transaction.signature.to_hex();
+
+        conn.execute("INSERT INTO transactions(
+            id, sender_addr, sender_pubkey, receiver_addr, amount, timestamp, signature
+        ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            &[&*id, &*sender_addr, &*sender_pubkey, &*receiver_addr, &*amount, &*timestamp, &*signature])?;
+
+        Ok(())
+    }
 }
 
 // read all cached (on database) transactions
@@ -283,37 +323,3 @@ pub fn clean_db() -> Result<(), ServerError> {
 //     println!("CLEAN TRANSACTIONS [DISK]");
 //     Ok(())
 // }
-
-// sign a transaction using schnorr signature
-fn get_signature(
-    tx_content: &TransactionContent,
-    private_key: secp256k1::key::SecretKey
-) -> Result<Vec<u8>, ServerError> {
-    println!("SIGN TRANSACTION");
-
-    let secp = secp256k1::Secp256k1::new();
-    // serialize the tx content
-    let tx_content_encoded: Vec<u8> = serialize(tx_content, Infinite)?;
-
-    // hash the tx content
-    let mut hasher = Sha256::new();
-    hasher.input(&tx_content_encoded);
-    let tx_content_hashed = hasher.result();
-
-    // create the input message with the hashed tx content
-    let input = secp256k1::Message::from_slice(tx_content_hashed.as_slice())?;
-
-    // return the signature created with the input message and private key
-    Ok(secp.sign_schnorr(&input, &private_key)?.serialize())
-}
-
-// hash a transaction to create its id
-fn get_id(tx_signed: &TransactionSigned) -> Result<Vec<u8>, ServerError> {
-    // serialize the signed tx
-    let tx_signed_encoded: Vec<u8> = serialize(tx_signed, Infinite)?;
-
-    // hash everything to return the id
-    let mut hasher = Sha256::new();
-    hasher.input(&tx_signed_encoded);
-    Ok(hasher.result().as_slice().to_vec())
-}
