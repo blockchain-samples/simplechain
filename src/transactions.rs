@@ -5,8 +5,8 @@ use std::path::Path;
 use bincode::{serialize, deserialize, Infinite};
 use sha2::{Sha256, Digest};
 use rusqlite::Connection;
-use base58::ToBase58;
-use hex::ToHex;
+use base58::{FromBase58, ToBase58};
+use hex::{FromHex, ToHex};
 use secp256k1;
 
 use utils;
@@ -29,7 +29,7 @@ struct TransactionSigned {
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Transaction {
     pub id: Vec<u8>,
-    transaction: TransactionSigned
+    transaction: TransactionSigned // bad field name...
 }
 
 // struct TransactionContentReadable<'a>(&'a TransactionContent);
@@ -98,7 +98,8 @@ pub fn create(
 
     // sign the current tx content
     let signature: Vec<u8> = get_signature(&tx_content, sender_privkey);
-    // create a signed tx with the sig
+
+    // create a signed tx with the signature
     let tx_signed = TransactionSigned {
         content: tx_content,
         signature: signature
@@ -122,6 +123,36 @@ pub fn create(
     Transaction {
         id: id,
         transaction: tx_signed
+    }
+}
+
+pub fn new(
+    id: String,
+    sender_addr: String,
+    sender_pubkey: String,
+    receiver_addr: String,
+    amount: u32,
+    timestamp: i64,
+    signature: String,
+) -> Transaction {
+    let id: Vec<u8> = FromHex::from_hex(id).unwrap();
+    let sender_addr: Vec<u8> = sender_addr.from_base58().unwrap();
+    let sender_pubkey: Vec<u8> = FromHex::from_hex(sender_pubkey).unwrap();
+    let receiver_addr: Vec<u8> = receiver_addr.from_base58().unwrap();
+    let signature: Vec<u8> = FromHex::from_hex(signature).unwrap();
+
+    Transaction {
+        id: id,
+        transaction: TransactionSigned {
+            content: TransactionContent {
+                sender_addr: sender_addr,
+                sender_pubkey: sender_pubkey,
+                receiver_addr: receiver_addr,
+                amount: amount,
+                timestamp: timestamp
+            },
+            signature: signature,
+        },
     }
 }
 
@@ -163,7 +194,7 @@ pub fn verify(tx: &Transaction) -> bool {
 // store a transaction on database (cache) for further block creation
 pub fn store_db(tx: &Transaction) {
     println!("STORE TRANSACTION [DB]");
-    let conn = Connection::open("coin.db").unwrap();
+    let conn = Connection::open("storage.db").unwrap();
 
     let id = &tx.id.to_hex();
     let sender_addr = &tx.transaction.content.sender_addr.to_base58();
@@ -183,7 +214,7 @@ pub fn store_db(tx: &Transaction) {
 // read all cached (on database) transactions
 pub fn read_db() -> Vec<Transaction> {
     println!("READ TRANSACTIONS [DB]");
-    let conn = Connection::open("coin.db").unwrap();
+    let conn = Connection::open("storage.db").unwrap();
 
     let mut transactions: Vec<Transaction> = Vec::new();
 
@@ -226,7 +257,7 @@ pub fn read_db() -> Vec<Transaction> {
 // delete all cached transactions from database
 pub fn clean_db() {
     println!("CLEAN TRANSACTIONS [DB]");
-    let conn = Connection::open("coin.db").unwrap();
+    let conn = Connection::open("storage.db").unwrap();
 
     conn.execute("DELETE FROM transactions", &[]).unwrap();
 }

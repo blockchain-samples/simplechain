@@ -1,4 +1,5 @@
 /target/
+/server/
 **/*.rs.bk
 Cargo.lock
 *.py
