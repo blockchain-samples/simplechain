@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::thread;
 use rocket;
 use rocket_contrib::Json;
 use hex::{FromHex, ToHex};
@@ -7,10 +8,11 @@ use reqwest;
 use serde_json;
 use rusqlite::Connection;
 
+use errors::ServerError;
 use transactions;
 use wallet;
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Transaction {
     id: String,
     sender_addr: String,
@@ -19,6 +21,11 @@ struct Transaction {
     amount: u32,
     timestamp: i64,
     signature: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Block {
+
 }
 
 #[derive(Deserialize, Debug)]
@@ -35,62 +42,88 @@ fn get_index() -> String {
 
 // Send a transaction to node
 #[post("/transaction", data="<transaction>")]
-fn post_index(transaction: Json<Transaction>) {
-    let tx = transaction.into_inner();
+fn post_transaction(transaction: Json<Transaction>) -> Result<(), ServerError> {
+    let tx_json = transaction.into_inner();
 
     let tx = transactions::new(
-        tx.id, tx.sender_addr, tx.sender_pubkey, tx.receiver_addr, tx.amount, tx.timestamp, tx.signature
-    );
-
-    println!("{}", transactions::verify(&tx));
+        &tx_json.id,
+        &tx_json.sender_addr,
+        &tx_json.sender_pubkey,
+        &tx_json.receiver_addr,
+        tx_json.amount,
+        tx_json.timestamp,
+        &tx_json.signature
+    )?;
+    println!("{:?}", transactions::verify(&tx));
 
     // if(transactions::verify(&tx)) {
     //     put code here after
     // }
 
-    let nodes = get_nodes_from_server();
-    save_nodes(nodes);
+    let nodes = get_nodes_from_server()?;
+    save_nodes(&nodes);
 
-    // send transaction to known nodes
-    // for n in nodes {
-    //     let url = format!("http://{}:{}/transaction", n.address, n.port);
-    //     let mut res = String::new();
-    //
-    //     reqwest::get(&url).unwrap()
-    //         .read_to_string(&mut res)
-    //         .unwrap();
-    // }
+    // spawn a thread to do not block the request
+    thread::spawn(move || {
+        // send transaction to known nodes
+        for n in nodes {
+            let url = format!("http://{}:{}/transaction", n.address, n.port);
+
+            let client = reqwest::Client::new();
+
+            match client.post(&url).json(&tx_json).send() {
+                Ok(r) => {
+                    println!("ok");
+                },
+                Err(e) => {
+                    println!("{}", e);
+                }
+            }
+        }
+    });
+
+    // save transaction in db
+    transactions::store_db(&tx);
+
+    Ok(())
 }
 
-fn get_nodes_from_server() -> Vec<Node> {
+#[post("/block", data="<block>")]
+fn post_block(block: Json<Block>) {
+
+}
+
+fn get_nodes_from_server() -> Result<Vec<Node>, ServerError> {
     let count = 16;
     let url = format!("http://localhost:3000/nodes?count={}", count);
     let mut res = String::new();
 
-    let nodes: Vec<Node> = reqwest::get(&url).unwrap().json().unwrap();
+    let nodes: Vec<Node> = reqwest::get(&url)?.json()?;
 
-    nodes
+    Ok(nodes)
 }
 
-fn save_nodes(nodes: Vec<Node>) {
-    let conn = Connection::open("storage.db").unwrap();
+fn save_nodes(nodes: &Vec<Node>) -> Result<(), ServerError> {
+    let conn = Connection::open("storage.db")?;
 
     // delete previous nodes in db
-    conn.execute("DELETE FROM nodes", &[]).unwrap();
+    conn.execute("DELETE FROM nodes", &[])?;
 
     // save nodes in db
-    for n in &nodes {
+    for n in nodes {
         conn.execute(
-            "INSERT INTO nodes(address, port) VALUES(?1, ?2)",
+            "INSERT INTO nodes(address, port) VALUES(?1)",
             &[&n.address, &n.port]
-        ).unwrap();
+        )?;
     }
+
+    Ok(())
 }
 
-fn get_nodes_from_db() -> Vec<Node> {
-    let conn = Connection::open("storage.db").unwrap();
+fn get_nodes_from_db() -> Result<Vec<Node>, ServerError> {
+    let conn = Connection::open("storage.db")?;
 
-    let mut stmt = conn.prepare("SELECT address, port FROM nodes").unwrap();
+    let mut stmt = conn.prepare("SELECT address, port FROM nodes")?;
     let mut nodes: Vec<Node> = Vec::new();
 
     let rows = stmt.query_map(&[], |row| {
@@ -101,16 +134,16 @@ fn get_nodes_from_db() -> Vec<Node> {
             address: address,
             port: port
         }
-    }).unwrap();
+    })?;
 
     for n in rows {
-        nodes.push(n.unwrap());
+        nodes.push(n?);
     }
 
-    nodes
+    Ok(nodes)
 }
 
 pub fn start_node() {
     println!("STARTING NODE...");
-    rocket::ignite().mount("/", routes![get_index, post_index]).launch();
+    rocket::ignite().mount("/", routes![get_index, post_transaction]).launch();
 }

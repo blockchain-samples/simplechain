@@ -4,6 +4,7 @@ use hex::{FromHex, ToHex};
 use rand::{self, Rng};
 use jfs::{Config, Store};
 
+use errors::ServerError;
 use transactions::{self, Transaction};
 use utils;
 
@@ -24,70 +25,14 @@ pub struct Block {
     transactions: Vec<Transaction>
 }
 
-// impl Serialize for Header {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//         where S: Serializer
-//     {
-//         let mut state = serializer.serialize_struct("Header", 3)?;
-//         state.serialize_field("index", &self.index)?;
-//         state.serialize_field("timestamp", &self.timestamp)?;
-//         state.serialize_field("merkle_root", &self.merkle_root.to_hex())?;
-//         state.end()
-//     }
-// }
-//
-// impl Serialize for Block {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//         where S: Serializer
-//     {
-//         let mut state = serializer.serialize_struct("Block", 4)?;
-//         state.serialize_field("header", &self.header)?;
-//         state.serialize_field("hash", &self.hash.to_hex())?;
-//         state.serialize_field("nonce", &self.nonce)?;
-//         state.serialize_field("transactions", &self.transactions)?;
-//         state.end()
-//     }
-// }
-
-// #[derive(Serialize, Deserialize, PartialEq, Debug)]
-// struct HeaderReadable<'a>(&'a Header);
-
-// impl<'a> Serialize for HeaderReadable<'a> {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//         where S: Serializer
-//     {
-//         let mut state = serializer.serialize_struct("Header", 3)?;
-//         state.serialize_field("index", &self.0.index)?;
-//         state.serialize_field("timestamp", &self.0.timestamp)?;
-//         state.serialize_field("merkle_root", &self.0.merkle_root.to_hex())?;
-//         state.end()
-//     }
-// }
-
-// #[derive(Deserialize, PartialEq, Debug)]
-// pub struct BlockReadable<'a>(&'a Block);
-//
-// impl<'a> Serialize for BlockReadable<'a> {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//         where S: Serializer
-//     {
-//         let mut state = serializer.serialize_struct("Block", 4)?;
-//         state.serialize_field("header", &self.0.header)?;
-//         state.serialize_field("hash", &self.0.hash.to_hex())?;
-//         state.serialize_field("nonce", &self.0.nonce)?;
-//         state.serialize_field("transactions", &self.0.transactions)?;
-//         state.end()
-//     }
-// }
-
-pub fn create() {
+pub fn create() -> Result<(), ServerError> {
     println!("CREATE BLOCK");
 
     let index: u32 = 0;
     let timestamp: i64 = utils::get_current_timestamp();
 
     // get last cached transactions from database
-    let transactions = transactions::read_db();
+    let transactions = transactions::read_db()?;
 
     // delete all cached transactions
     // transactions::clean_db() // XXX don't uncomment now because we retrieve from database again below
@@ -108,9 +53,10 @@ pub fn create() {
         merkle_root: merkle_root,
     };
 
-    let (hash, nonce) = mine(&header);
+    let (hash, nonce) = mine(&header)?;
 
-    let transactions = transactions::read_db();
+    // FIXME bad! we read database two times (should use previous transactions Vec)
+    let transactions = transactions::read_db()?;
 
     let block: Block = Block {
         header: header,
@@ -120,9 +66,11 @@ pub fn create() {
     };
 
     store_db(&block);
+
+    Ok(())
 }
 
-pub fn store_db(block: &Block) {
+pub fn store_db(block: &Block) -> Result<(), ServerError> {
     println!("STORE BLOCK [DB]");
 
     let cfg = Config {
@@ -130,20 +78,22 @@ pub fn store_db(block: &Block) {
         indent: 2,
         single: true
     };
-    let db = Store::new_with_cfg("blockchain", cfg).unwrap();
+    let db = Store::new_with_cfg("blockchain", cfg)?;
 
-    let id = db.save_with_id(block, &block.header.index.to_string()).unwrap();
+    let id = db.save_with_id(block, &block.header.index.to_string())?;
+
+    Ok(())
 
     // let ev = db.get::<Block>(&id).unwrap();
     // println!("{:?}", ev);
 }
 
 // mine a block with the block's header
-fn mine(header: &Header) -> (Vec<u8>, u64) {
+fn mine(header: &Header) -> Result<(Vec<u8>, u64), ServerError> {
     println!("MINE BLOCK");
 
     // serialize the block header
-    let header_encoded: Vec<u8> = serialize(header, Infinite).unwrap();
+    let header_encoded: Vec<u8> = serialize(header, Infinite)?;
 
     // hash the block header
     let mut hasher = Sha256::default();
@@ -151,11 +101,11 @@ fn mine(header: &Header) -> (Vec<u8>, u64) {
     let header_hashed: Vec<u8> = hasher.result().as_slice().to_vec();
 
     // make a proof of work using this hash
-    proof_of_work(&header_hashed)
+    Ok(proof_of_work(&header_hashed)?)
 }
 
 // TODO try to rewrite this with bytes, not strings
-fn proof_of_work(hash: &Vec<u8>) -> (Vec<u8>, u64) {
+fn proof_of_work(hash: &Vec<u8>) -> Result<(Vec<u8>, u64), ServerError> {
     println!("PROOF OF WORK...");
 
     let mut rng = rand::thread_rng(); // TODO check if we can reuse this (is it secure) or should we recreate one every time
@@ -180,9 +130,9 @@ fn proof_of_work(hash: &Vec<u8>) -> (Vec<u8>, u64) {
     println!("WITH NONCE {}", nonce);
 
     // get a Vec<u8> from the hash hex string
-    let hash_final: Vec<u8> = FromHex::from_hex(hash_final).unwrap();
+    let hash_final: Vec<u8> = FromHex::from_hex(hash_final)?;
 
-    (hash_final, nonce)
+    Ok((hash_final, nonce))
 }
 
 // get the root hash of every transaction's hash using a merkle tree
