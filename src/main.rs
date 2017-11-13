@@ -33,5 +33,5 @@ fn main() {
     // println!("PKEY: {}", public_key.to_hex());
     // println!("ADDR: {}", address.to_base58());
 
-    network::start_node();
+    network::server::start();
 }

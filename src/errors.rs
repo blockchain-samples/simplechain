@@ -1,5 +1,6 @@
 use std::io::Error as StdError;
 use std::boxed::Box;
+use rocket::config::ConfigError as RocketConfigError;
 use reqwest::Error as ReqwestError;
 use rusqlite::Error as RusqliteError;
 use hex::FromHexError;
@@ -22,6 +23,12 @@ pub enum ServerError {
 impl From<StdError> for ServerError {
     fn from(_: StdError) -> ServerError {
         ServerError::IoError
+    }
+}
+
+impl From<RocketConfigError> for ServerError {
+    fn from(_: RocketConfigError) -> ServerError {
+        ServerError::HttpError
     }
 }
 
