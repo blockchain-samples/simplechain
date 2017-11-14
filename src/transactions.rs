@@ -192,7 +192,9 @@ impl Transaction {
     // store a transaction on database (cache) for further block creation
     pub fn store_db(&self) -> Result<(), ServerError> {
         println!("STORE TRANSACTION [DB]");
-        let conn = Connection::open("storage.db")?;
+        // TODO rewrite this with connection pools
+        // TODO get the db address string from config.json
+        let conn = Connection::open("db/storage.db")?;
 
         let id = &self.id.to_hex();
         let sender_addr = &self.transaction.content.sender_addr.to_base58();
@@ -211,10 +213,11 @@ impl Transaction {
     }
 }
 
-// read all cached (on database) transactions
+// read all cached database transactions
 pub fn read_db() -> Result<Vec<Transaction>, ServerError> {
     println!("READ TRANSACTIONS [DB]");
-    let conn = Connection::open("storage.db")?;
+    // TODO rewrite this with connection pools
+    let conn = Connection::open("db/storage.db")?;
 
     let mut transactions: Vec<Transaction> = Vec::new();
 
@@ -257,7 +260,9 @@ pub fn read_db() -> Result<Vec<Transaction>, ServerError> {
 // delete all cached transactions from database
 pub fn clean_db() -> Result<(), ServerError> {
     println!("CLEAN TRANSACTIONS [DB]");
-    let conn = Connection::open("storage.db")?;
+    // TODO rewrite this with connection pools
+    // TODO get the db address string from config.json
+    let conn = Connection::open("db/storage.db")?;
 
     conn.execute("DELETE FROM transactions", &[])?;
     Ok(())

@@ -4,20 +4,34 @@ version = "0.1.0"
 authors = ["Martin Gul <martingul@outlook.com>"]
 
 [dependencies]
+time = "*"
+
+# Http
+reqwest = "0.8.1"
+rocket = "0.3.3"
+rocket_codegen = "0.3.3"
+rocket_contrib = "0.3.3"
+
+# Cryptography
+secp256k1 = "*"
+rand = "*"
+sha2 = "*"
+
+# Serialization
 bincode = "*"
 serde = "1.0.14"
 serde_derive = "1.0.14"
 serde_bytes = "0.10.2"
 serde_json = "1.0.3" # jfs is using 1.0.3 but the newest version is 1.0.6
-time = "*"
-secp256k1 = "*"
-rand = "*"
-base58 = "*"
-sha2 = "*"
-rusqlite = "*"
 hex = "0.2.0"
+base58 = "*"
+
+# Database
 jfs = "*"
-rocket = "0.3.3"
-rocket_codegen = "0.3.3"
-rocket_contrib = "0.3.3"
-reqwest = "0.8.1"
+rusqlite = "*"
+postgres_array = "0.9.0"
+# postgres-derive = "0.3.1"
+postgres-derive = { git = "https://github.com/mguldev/rust-postgres-derive", branch = "master" }
+postgres = "0.15.1"
+r2d2 = "0.7.4"
+r2d2_postgres = "0.13.0"

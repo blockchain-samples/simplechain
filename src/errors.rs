@@ -7,6 +7,7 @@ use hex::FromHexError;
 use base58::FromBase58Error;
 use bincode::ErrorKind as BincodeError;
 use secp256k1::Error as Secp256k1Error;
+use r2d2::InitializationError as R2d2InitializationError;
 
 // TODO split in two error types: NetError and CoreError?
 
@@ -65,5 +66,11 @@ impl From<Box<BincodeError>> for ServerError {
 impl From<Secp256k1Error> for ServerError {
     fn from(_: Secp256k1Error) -> ServerError {
         ServerError::CryptoError
+    }
+}
+
+impl From<R2d2InitializationError> for ServerError {
+    fn from(_: R2d2InitializationError) -> ServerError {
+        ServerError::DatabaseError
     }
 }

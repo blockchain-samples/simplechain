@@ -1,7 +1,8 @@
-#![feature(iterator_step_by, plugin)]
+#![feature(iterator_step_by, plugin, use_extern_macros)]
 #![plugin(rocket_codegen)]
 
 #[macro_use] extern crate serde_derive;
+#[macro_use] extern crate postgres_derive;
 #[macro_use] extern crate rocket_contrib;
 extern crate rocket;
 extern crate serde_bytes;
@@ -17,7 +18,12 @@ extern crate hex;
 extern crate rand;
 extern crate jfs;
 extern crate reqwest;
+extern crate postgres;
+extern crate r2d2;
+extern crate r2d2_postgres;
+extern crate postgres_array;
 
+mod blockchain;
 mod blocks;
 mod errors;
 mod network;

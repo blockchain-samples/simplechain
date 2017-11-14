@@ -8,26 +8,35 @@ use base58::{FromBase58, ToBase58};
 use reqwest;
 use serde_json;
 use rusqlite::Connection;
+use postgres_array::Array;
+use postgres_derive;
 
 use super::nodes;
+use blockchain;
 use errors::ServerError;
 use transactions;
 use wallet;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, FromSql, ToSql, Debug)]
+#[postgres(name="tx")]
 pub struct Transaction {
     id: String,
     sender_addr: String,
     sender_pubkey: String,
     receiver_addr: String,
-    amount: u32,
+    amount: i32, // u32
     timestamp: i64,
     signature: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Block {
-
+pub struct Block {
+    id: i32, // u32
+    timestamp: i64,
+    merkle_root: String, // Vec<u8>
+    hash: String, // Vec<u8>
+    nonce: i64, // u64
+    transactions: Vec<Transaction>, // this Transaction, not the one in transactions.rs
 }
 
 // Get general infos about node
@@ -46,7 +55,7 @@ fn post_transaction(transaction: Json<Transaction>) -> Result<(), ServerError> {
         &tx_json.sender_addr,
         &tx_json.sender_pubkey,
         &tx_json.receiver_addr,
-        tx_json.amount,
+        tx_json.amount as u32, // FIXME make from() accept i32 instead of u32
         tx_json.timestamp,
         &tx_json.signature
     )?;
@@ -58,20 +67,43 @@ fn post_transaction(transaction: Json<Transaction>) -> Result<(), ServerError> {
 
     // XXX
     let nodes = nodes::get_nodes_from_server()?;
-    nodes::save_nodes(&nodes);
+    nodes::save_nodes(&nodes)?;
 
     // send transaction to known nodes
-    nodes::send_transaction(tx_json);
+    nodes::send_transaction(tx_json)?;
 
     // save transaction in db
-    tx.store_db();
+    tx.store_db()?;
 
     Ok(())
 }
 
 #[post("/block", data="<block>")]
-fn post_block(block: Json<Block>) {
+fn post_block(block: Json<Block>) -> Result<(), ServerError> {
+    let block_json = block.into_inner();
+    let pool = blockchain::get_db_pool()?;
 
+    // TODO verify block
+
+    let query = "INSERT INTO blocks(id, timestamp, merkle_root, hash, nonce, transactions)
+        VALUES($1, $2, $3, $4, $5, $6)";
+
+    thread::spawn(move || {
+        let conn = pool.get().unwrap();
+        match conn.execute(query, &[
+            &block_json.id,
+            &block_json.timestamp,
+            &block_json.merkle_root,
+            &block_json.hash,
+            &block_json.nonce,
+            &Array::from_vec(block_json.transactions, 0)
+        ]) {
+            Ok(_) => {},
+            Err(e) => println!("{:?}", e) // FIXME do proper error handling
+        }
+    });
+
+    Ok(())
 }
 
 pub fn start() -> Result<(), ServerError> {
@@ -84,7 +116,7 @@ pub fn start() -> Result<(), ServerError> {
         .finalize()?;
 
     let server = rocket::custom(config, true);
-    server.mount("/", routes![get_index, post_transaction]).launch();
+    server.mount("/", routes![get_index, post_transaction, post_block]).launch();
 
     Ok(())
 }

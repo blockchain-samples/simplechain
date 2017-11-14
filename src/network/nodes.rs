@@ -24,7 +24,6 @@ pub struct Node {
 pub fn get_nodes_from_server() -> Result<Vec<Node>, ServerError> {
     let count = 16;
     let url = format!("http://localhost:3000/nodes?count={}", count);
-    let mut res = String::new();
 
     let nodes: Vec<Node> = reqwest::get(&url)?.json()?;
 
@@ -32,7 +31,7 @@ pub fn get_nodes_from_server() -> Result<Vec<Node>, ServerError> {
 }
 
 pub fn save_nodes(nodes: &Vec<Node>) -> Result<(), ServerError> {
-    let conn = Connection::open("storage.db")?;
+    let conn = Connection::open("db/storage.db")?;
 
     // delete previous nodes in db
     conn.execute("DELETE FROM nodes", &[])?;
@@ -49,7 +48,7 @@ pub fn save_nodes(nodes: &Vec<Node>) -> Result<(), ServerError> {
 }
 
 fn get_nodes_from_db() -> Result<Vec<Node>, ServerError> {
-    let conn = Connection::open("storage.db")?;
+    let conn = Connection::open("db/storage.db")?;
 
     let mut stmt = conn.prepare("SELECT address, port FROM nodes")?;
     let mut nodes: Vec<Node> = Vec::new();

@@ -8,7 +8,6 @@ use errors::ServerError;
 use transactions::{self, Transaction};
 use utils;
 
-// TODO maybe rename this to just "Header"
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct Header {
     index: u32,
@@ -22,10 +21,10 @@ pub struct Block {
     header: Header,
     hash: Vec<u8>,
     nonce: u64,
-    transactions: Vec<Transaction>
+    transactions: Vec<Transaction>,
 }
 
-pub fn create() -> Result<(), ServerError> {
+pub fn new() -> Result<(), ServerError> {
     println!("CREATE BLOCK");
 
     let index: u32 = 0;
@@ -65,28 +64,28 @@ pub fn create() -> Result<(), ServerError> {
         transactions: transactions // FIXME use the previous transactions Vec instead!
     };
 
-    store_db(&block);
+    // store_db(&block)?;
 
     Ok(())
 }
 
-pub fn store_db(block: &Block) -> Result<(), ServerError> {
-    println!("STORE BLOCK [DB]");
-
-    let cfg = Config {
-        pretty: false,
-        indent: 2,
-        single: true
-    };
-    let db = Store::new_with_cfg("blockchain", cfg)?;
-
-    let id = db.save_with_id(block, &block.header.index.to_string())?;
-
-    Ok(())
-
-    // let ev = db.get::<Block>(&id).unwrap();
-    // println!("{:?}", ev);
-}
+// pub fn store_db(block: &Block) -> Result<(), ServerError> {
+//     println!("STORE BLOCK [DB]");
+//
+//     let cfg = Config {
+//         pretty: false,
+//         indent: 2,
+//         single: true
+//     };
+//     let db = Store::new_with_cfg("blockchain", cfg)?;
+//
+//     let id = db.save_with_id(block, &block.header.index.to_string())?;
+//
+//     Ok(())
+//
+//     // let ev = db.get::<Block>(&id).unwrap();
+//     // println!("{:?}", ev);
+// }
 
 // mine a block with the block's header
 fn mine(header: &Header) -> Result<(Vec<u8>, u64), ServerError> {
