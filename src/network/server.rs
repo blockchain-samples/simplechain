@@ -13,6 +13,7 @@ use postgres_derive;
 
 use super::nodes;
 use blockchain;
+use blocks;
 use errors::ServerError;
 use transactions;
 use wallet;
@@ -55,7 +56,7 @@ fn post_transaction(transaction: Json<Transaction>) -> Result<(), ServerError> {
         &tx_json.sender_addr,
         &tx_json.sender_pubkey,
         &tx_json.receiver_addr,
-        tx_json.amount as u32, // FIXME make from() accept i32 instead of u32
+        tx_json.amount,
         tx_json.timestamp,
         &tx_json.signature
     )?;
@@ -83,12 +84,19 @@ fn post_block(block: Json<Block>) -> Result<(), ServerError> {
     let block_json = block.into_inner();
     let pool = blockchain::get_db_pool()?;
 
-    // TODO verify block
+    let block_header = blocks::Header::from(
+        block_json.id, block_json.timestamp, &block_json.merkle_root
+    )?;
 
-    let query = "INSERT INTO blocks(id, timestamp, merkle_root, hash, nonce, transactions)
-        VALUES($1, $2, $3, $4, $5, $6)";
+    let mined_hash: Vec<u8> = FromHex::from_hex(&block_json.hash)?;
 
-    thread::spawn(move || {
+    let verified = blocks::verify(&block_header, &mined_hash, block_json.nonce)?;
+
+    if verified {
+        let query = "INSERT INTO blocks(id, timestamp, merkle_root, hash, nonce, transactions)
+            VALUES($1, $2, $3, $4, $5, $6)";   
+    
+        thread::spawn(move || {
         let conn = pool.get().unwrap();
         match conn.execute(query, &[
             &block_json.id,
@@ -98,10 +106,28 @@ fn post_block(block: Json<Block>) -> Result<(), ServerError> {
             &block_json.nonce,
             &Array::from_vec(block_json.transactions, 0)
         ]) {
-            Ok(_) => {},
-            Err(e) => println!("{:?}", e) // FIXME do proper error handling
-        }
-    });
+                Ok(_) => {},
+                Err(e) => println!("{:?}", e) // FIXME do proper error handling
+            }
+        });
+    } else {
+        println!("Invalid block");
+    }
+
+    // thread::spawn(move || {
+    //     let conn = pool.get().unwrap();
+    //     match conn.execute(query, &[
+    //         &block_json.id,
+    //         &block_json.timestamp,
+    //         &block_json.merkle_root,
+    //         &block_json.hash,
+    //         &block_json.nonce,
+    //         &Array::from_vec(block_json.transactions, 0)
+    //     ]) {
+    //         Ok(_) => {},
+    //         Err(e) => println!("{:?}", e) // FIXME do proper error handling
+    //     }
+    // });
 
     Ok(())
 }

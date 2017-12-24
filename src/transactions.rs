@@ -18,7 +18,7 @@ struct TransactionContent {
     sender_addr: Vec<u8>,
     sender_pubkey: Vec<u8>,
     receiver_addr: Vec<u8>,
-    amount: u32,
+    amount: i32,
     timestamp: i64
 }
 
@@ -79,7 +79,7 @@ impl Transaction {
         sender_pubkey: Vec<u8>,
         sender_addr: Vec<u8>,
         receiver_addr: Vec<u8>,
-        amount: u32
+        amount: i32
     ) -> Result<Transaction, ServerError> {
         println!("CREATE TRANSACTION");
 
@@ -129,7 +129,7 @@ impl Transaction {
         sender_addr: &String,
         sender_pubkey: &String,
         receiver_addr: &String,
-        amount: u32,
+        amount: i32,
         timestamp: i64,
         signature: &String,
     ) -> Result<Transaction, ServerError> {
@@ -231,7 +231,7 @@ pub fn read_db() -> Result<Vec<Transaction>, ServerError> {
         let sender_addr: String = row.get(1);
         let sender_pubkey: String = row.get(2);
         let receiver_addr: String = row.get(3);
-        let amount: u32 = row.get(4);
+        let amount: i32 = row.get(4);
         let timestamp: i64 = row.get(5);
         let signature: String = row.get(6);
 

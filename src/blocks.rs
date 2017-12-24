@@ -9,25 +9,67 @@ use transactions::{self, Transaction};
 use utils;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct Header {
-    index: u32,
+pub struct Header {
+    id: i32,
     timestamp: i64,
     merkle_root: Vec<u8>,
 }
 
 // TODO implement previous_hash
+// TODO maybe make this private and return a "web" Block (for easier JSON) instead of this struct
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Block {
     header: Header,
-    hash: Vec<u8>,
-    nonce: u64,
+    hash: Vec<u8>, // TODO place this in Header?
+    nonce: i64, // TODO place this in Header?
     transactions: Vec<Transaction>,
+}
+
+impl Header {
+    pub fn from(
+        id: i32,
+        timestamp: i64,
+        merkle_root: &String
+    ) -> Result<Header, ServerError> {
+        let merkle_root: Vec<u8> = FromHex::from_hex(merkle_root)?;
+
+        Ok(Header {
+            id: id,
+            timestamp: timestamp,
+            merkle_root: merkle_root
+        })
+    }
+}
+
+impl Block {
+    pub fn from(
+        id: i32,
+        timestamp: i64,
+        merkle_root: String,
+        hash: String,
+        nonce: i64,
+        transactions: Vec<Transaction>
+    ) -> Result<Block, ServerError> {
+        let merkle_root: Vec<u8> = FromHex::from_hex(merkle_root)?;
+        let hash: Vec<u8> = FromHex::from_hex(hash)?;
+
+        Ok(Block {
+            header: Header {
+                id: id,
+                timestamp: timestamp,
+                merkle_root: merkle_root
+            },
+            hash: hash,
+            nonce: nonce,
+            transactions: transactions
+        })
+    }
 }
 
 pub fn new() -> Result<(), ServerError> {
     println!("CREATE BLOCK");
 
-    let index: u32 = 0;
+    let id: i32 = 0;
     let timestamp: i64 = utils::get_current_timestamp();
 
     // get last cached transactions from database
@@ -44,15 +86,22 @@ pub fn new() -> Result<(), ServerError> {
     // get merkle root of all tx using the hash list
     let merkle_root = get_merkle_root(&tx_hash_list);
 
+    println!("\nBLOCK INFOS\n------");
+    println!("id: {}", id);
+    println!("timestamp: {}", timestamp);
+    println!("merkle_root: {}\n", merkle_root.to_hex());
+
     // TODO create coinbase tx for the miner
 
     let header: Header = Header {
-        index: index,
+        id: id,
         timestamp: timestamp,
         merkle_root: merkle_root,
     };
 
-    let (hash, nonce) = mine(&header)?;
+    // TODO [NOT SURE] instead of mining the header, mine what is INSIDE the header, then create the header
+    // with id, timestamp, merkle_root, hash and nonce (cleaner)
+    let (hash, nonce) = mine(&header)?; // so this becomes mine(&id, &timestamp, &merkle_root);
 
     // FIXME bad! we read database two times (should use previous transactions Vec)
     let transactions = transactions::read_db()?;
@@ -79,7 +128,7 @@ pub fn new() -> Result<(), ServerError> {
 //     };
 //     let db = Store::new_with_cfg("blockchain", cfg)?;
 //
-//     let id = db.save_with_id(block, &block.header.index.to_string())?;
+//     let id = db.save_with_id(block, &block.header.id.to_string())?;
 //
 //     Ok(())
 //
@@ -88,7 +137,7 @@ pub fn new() -> Result<(), ServerError> {
 // }
 
 // mine a block with the block's header
-fn mine(header: &Header) -> Result<(Vec<u8>, u64), ServerError> {
+fn mine(header: &Header) -> Result<(Vec<u8>, i64), ServerError> {
     println!("MINE BLOCK");
 
     // serialize the block header
@@ -103,19 +152,21 @@ fn mine(header: &Header) -> Result<(Vec<u8>, u64), ServerError> {
     Ok(proof_of_work(&header_hashed)?)
 }
 
-// TODO try to rewrite this with bytes, not strings
-fn proof_of_work(hash: &Vec<u8>) -> Result<(Vec<u8>, u64), ServerError> {
+// TODO remake this with bytes not strings
+// XXX should we also include the other fields of Header in the PoW, or only merkle_root?
+fn proof_of_work(hash: &Vec<u8>) -> Result<(Vec<u8>, i64), ServerError> {
     println!("PROOF OF WORK...");
 
     let mut rng = rand::thread_rng(); // TODO check if we can reuse this (is it secure) or should we recreate one every time
-    let mut nonce: u64 = 0;
-    let n: usize = 2;
+    // XXX what if `nonce: i64` isn't big enough to hold the value that will allow to find the correct hash?
+    let mut nonce: i64 = 0;
+    let n: usize = 2; // this is basically the difficulty (n is bigger -> less probability to find a good hash)
     let mut hash_final = hash.clone().to_hex();
 
     // while the leading bytes aren't some 0s
     while &hash_final[..n] != &(0..n).map(|_| "0").collect::<String>() {
         // generate a new random nonce
-        nonce = rng.gen::<u64>();
+        nonce = rng.gen::<i64>();
         // concat the hash and the nonce
         hash_final = format!("{}{}", hash.to_hex(), nonce);
 
@@ -173,4 +224,25 @@ fn get_merkle_root(hash_list: &Vec<Vec<u8>>) -> Vec<u8> {
     } else {
         return Vec::<u8>::new();
     }
+}
+
+// verify a block
+pub fn verify(header: &Header, mined_hash: &Vec<u8>, nonce: i64) -> Result<bool, ServerError> {
+    // serialize the block header
+    let header_encoded: Vec<u8> = serialize(header, Infinite)?;
+
+    // hash the block header
+    let mut hasher = Sha256::default();
+    hasher.input(&header_encoded);
+    let header_hashed: Vec<u8> = hasher.result().as_slice().to_vec();
+
+    // FIXME working with strings... should concat bytes directly
+    let tested_payload = format!("{}{}", header_hashed.to_hex(), nonce);
+
+    // hash the block header
+    hasher = Sha256::default();
+    hasher.input(&tested_payload.as_bytes());
+    let hash: Vec<u8> = hasher.result().as_slice().to_vec();
+
+    Ok(hash == *mined_hash)
 }
