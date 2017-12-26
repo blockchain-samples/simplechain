@@ -26,7 +26,6 @@ base58 = "*"
 rustc-serialize = "0.3"
 
 # Database
-jfs = "*"
 rusqlite = "*"
 postgres = "0.15"
 postgres-derive = "0.3"

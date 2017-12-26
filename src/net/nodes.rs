@@ -2,7 +2,6 @@ use std::thread;
 use reqwest;
 use rusqlite::Connection;
 
-use super::server::Transaction;
 use errors::CoreError;
 
 #[derive(Deserialize, Debug)]
@@ -69,7 +68,7 @@ fn get_nodes_from_db() -> Result<Vec<Node>, CoreError> {
     Ok(nodes)
 }
 
-pub fn send_transaction(tx: Transaction) -> Result<(), CoreError> {
+pub fn send_transaction(tx: super::Transaction) -> Result<(), CoreError> {
     let nodes = get_nodes_from_db()?;
 
     // spawn a thread to do not block the request

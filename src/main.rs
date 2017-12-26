@@ -12,7 +12,6 @@ extern crate sha2;
 extern crate rusqlite;
 extern crate hex;
 extern crate rand;
-extern crate jfs;
 extern crate reqwest;
 extern crate r2d2;
 extern crate r2d2_postgres;
@@ -23,18 +22,11 @@ extern crate rustc_serialize;
 mod blockchain;
 mod blocks;
 mod errors;
-mod network;
+mod net;
 mod transactions;
 mod utils;
 mod wallet;
 
-use hex::{FromHex, ToHex};
-use base58::{FromBase58, ToBase58};
-
 fn main() {
-    // let (private_key, public_key, address) = wallet::get_identity()?;
-    // println!("PKEY: {}", public_key.to_hex());
-    // println!("ADDR: {}", address.to_base58());
-
-    network::server::start();
+    net::server::start();
 }

@@ -1,8 +1,7 @@
-use bincode::{serialize, deserialize, Infinite};
+use bincode::{serialize, Infinite};
 use sha2::{Sha256, Digest};
 use hex::{FromHex, ToHex};
 use rand::{self, Rng};
-use jfs::{Config, Store};
 
 use errors::CoreError;
 use transactions::{self, Transaction};
