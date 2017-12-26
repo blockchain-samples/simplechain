@@ -3,10 +3,10 @@ use secp256k1::key::SecretKey;
 use rand;
 use sha2::{Sha256, Digest};
 
-use errors::ServerError;
+use errors::CoreError;
 
 // returns the private key, public key and address
-pub fn get_identity() -> Result<(SecretKey, Vec<u8>, Vec<u8>), ServerError> {
+pub fn get_identity() -> Result<(SecretKey, Vec<u8>, Vec<u8>), CoreError> {
     let secp = Secp256k1::new();
     let mut rng = rand::thread_rng();
 

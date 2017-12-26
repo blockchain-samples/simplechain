@@ -4,7 +4,7 @@ use hex::{FromHex, ToHex};
 use rand::{self, Rng};
 use jfs::{Config, Store};
 
-use errors::ServerError;
+use errors::CoreError;
 use transactions::{self, Transaction};
 use utils;
 
@@ -30,7 +30,7 @@ impl Header {
         id: i32,
         timestamp: i64,
         merkle_root: &String
-    ) -> Result<Header, ServerError> {
+    ) -> Result<Header, CoreError> {
         let merkle_root: Vec<u8> = FromHex::from_hex(merkle_root)?;
 
         Ok(Header {
@@ -49,7 +49,7 @@ impl Block {
         hash: String,
         nonce: i64,
         transactions: Vec<Transaction>
-    ) -> Result<Block, ServerError> {
+    ) -> Result<Block, CoreError> {
         let merkle_root: Vec<u8> = FromHex::from_hex(merkle_root)?;
         let hash: Vec<u8> = FromHex::from_hex(hash)?;
 
@@ -66,7 +66,7 @@ impl Block {
     }
 }
 
-pub fn new() -> Result<(), ServerError> {
+pub fn new() -> Result<(), CoreError> {
     println!("CREATE BLOCK");
 
     let id: i32 = 0;
@@ -118,7 +118,7 @@ pub fn new() -> Result<(), ServerError> {
     Ok(())
 }
 
-// pub fn store_db(block: &Block) -> Result<(), ServerError> {
+// pub fn store_db(block: &Block) -> Result<(), CoreError> {
 //     println!("STORE BLOCK [DB]");
 //
 //     let cfg = Config {
@@ -137,7 +137,7 @@ pub fn new() -> Result<(), ServerError> {
 // }
 
 // mine a block with the block's header
-fn mine(header: &Header) -> Result<(Vec<u8>, i64), ServerError> {
+fn mine(header: &Header) -> Result<(Vec<u8>, i64), CoreError> {
     println!("MINE BLOCK");
 
     // serialize the block header
@@ -153,8 +153,8 @@ fn mine(header: &Header) -> Result<(Vec<u8>, i64), ServerError> {
 }
 
 // TODO remake this with bytes not strings
-// XXX should we also include the other fields of Header in the PoW, or only merkle_root?
-fn proof_of_work(hash: &Vec<u8>) -> Result<(Vec<u8>, i64), ServerError> {
+// TODO spawn new thread for concurrent mining
+fn proof_of_work(hash: &Vec<u8>) -> Result<(Vec<u8>, i64), CoreError> {
     println!("PROOF OF WORK...");
 
     let mut rng = rand::thread_rng(); // TODO check if we can reuse this (is it secure) or should we recreate one every time
@@ -197,11 +197,19 @@ fn get_merkle_root(hash_list: &Vec<Vec<u8>>) -> Vec<u8> {
             let mut hash_list_computed: Vec<Vec<u8>> = Vec::new();
 
             // step in the hash list 2 by 2
-            for i in (0..hash_list_len - 1).step_by(2) {
+            // XXX use this when `step_by()` becomes stable
+            // for i in (0..hash_list_len - 1).step_by(2) {
+            //
+            // }
+
+            let mut i = 0;
+            while i < hash_list_len - 1 {
                 // hash (n, n+1) together and push the result hash in a new hash list
                 let mut hasher = Sha256::default();
                 hasher.input(&[&hash_list[i][..], &hash_list[i+1][..]].concat());
                 hash_list_computed.push(hasher.result().as_slice().to_vec());
+
+                i += 2;
             }
 
             if hash_list_len % 2 != 0 {
@@ -227,7 +235,7 @@ fn get_merkle_root(hash_list: &Vec<Vec<u8>>) -> Vec<u8> {
 }
 
 // verify a block
-pub fn verify(header: &Header, mined_hash: &Vec<u8>, nonce: i64) -> Result<bool, ServerError> {
+pub fn verify(header: &Header, mined_hash: &Vec<u8>, nonce: i64) -> Result<bool, CoreError> {
     // serialize the block header
     let header_encoded: Vec<u8> = serialize(header, Infinite)?;
 

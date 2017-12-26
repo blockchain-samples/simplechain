@@ -1,6 +1,5 @@
 use std::io::Error as StdError;
 use std::boxed::Box;
-use rocket::config::ConfigError as RocketConfigError;
 use reqwest::Error as ReqwestError;
 use rusqlite::Error as RusqliteError;
 use hex::FromHexError;
@@ -9,10 +8,12 @@ use bincode::ErrorKind as BincodeError;
 use secp256k1::Error as Secp256k1Error;
 use r2d2::InitializationError as R2d2InitializationError;
 
+use rouille::input::json::JsonError;
+
 // TODO split in two error types: NetError and CoreError?
 
 #[derive(Debug)]
-pub enum ServerError {
+pub enum CoreError {
     // FIXME change those generic names to more specific errors
     IoError,
     HttpError,
@@ -21,33 +22,68 @@ pub enum ServerError {
     CryptoError
 }
 
-impl From<StdError> for ServerError {
-    fn from(_: StdError) -> ServerError {
-        ServerError::IoError
+impl From<StdError> for CoreError {
+    fn from(_: StdError) -> CoreError {
+        CoreError::IoError
     }
 }
 
-impl From<RocketConfigError> for ServerError {
-    fn from(_: RocketConfigError) -> ServerError {
-        ServerError::HttpError
+impl From<ReqwestError> for CoreError {
+    fn from(_: ReqwestError) -> CoreError {
+        CoreError::HttpError
     }
 }
 
-impl From<ReqwestError> for ServerError {
-    fn from(_: ReqwestError) -> ServerError {
-        ServerError::HttpError
+impl From<RusqliteError> for CoreError {
+    fn from(_: RusqliteError) -> CoreError {
+        CoreError::DatabaseError
     }
 }
 
-impl From<RusqliteError> for ServerError {
-    fn from(_: RusqliteError) -> ServerError {
-        ServerError::DatabaseError
+impl From<FromHexError> for CoreError {
+    fn from(_: FromHexError) -> CoreError {
+        CoreError::SerializeError
     }
 }
 
-impl From<FromHexError> for ServerError {
-    fn from(_: FromHexError) -> ServerError {
-        ServerError::SerializeError
+impl From<FromBase58Error> for CoreError {
+    fn from(_: FromBase58Error) -> CoreError {
+        CoreError::SerializeError
+    }
+}
+
+impl From<Box<BincodeError>> for CoreError {
+    fn from(_: Box<BincodeError>) -> CoreError {
+        CoreError::SerializeError
+    }
+}
+
+impl From<Secp256k1Error> for CoreError {
+    fn from(_: Secp256k1Error) -> CoreError {
+        CoreError::CryptoError
+    }
+}
+
+impl From<R2d2InitializationError> for CoreError {
+    fn from(_: R2d2InitializationError) -> CoreError {
+        CoreError::DatabaseError
+    }
+}
+
+#[derive(Debug)]
+pub enum ServerError {
+    CoreError,
+    BodyParseError,
+    SerializeError,
+
+    NotFound,
+    InvalidTransaction,
+    InvalidBlock
+}
+
+impl From<CoreError> for ServerError {
+    fn from(_: CoreError) -> ServerError {
+        ServerError::CoreError
     }
 }
 
@@ -57,20 +93,14 @@ impl From<FromBase58Error> for ServerError {
     }
 }
 
-impl From<Box<BincodeError>> for ServerError {
-    fn from(_: Box<BincodeError>) -> ServerError {
+impl From<FromHexError> for ServerError {
+    fn from(_: FromHexError) -> ServerError {
         ServerError::SerializeError
     }
 }
 
-impl From<Secp256k1Error> for ServerError {
-    fn from(_: Secp256k1Error) -> ServerError {
-        ServerError::CryptoError
-    }
-}
-
-impl From<R2d2InitializationError> for ServerError {
-    fn from(_: R2d2InitializationError) -> ServerError {
-        ServerError::DatabaseError
+impl From<JsonError> for ServerError {
+    fn from(_: JsonError) -> ServerError {
+        ServerError::BodyParseError
     }
 }

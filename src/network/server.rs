@@ -1,8 +1,5 @@
 use std::io::Read;
 use std::thread;
-use rocket;
-use rocket::config::{Config, Environment};
-use rocket_contrib::Json;
 use hex::{FromHex, ToHex};
 use base58::{FromBase58, ToBase58};
 use reqwest;
@@ -10,6 +7,7 @@ use serde_json;
 use rusqlite::Connection;
 use postgres_array::Array;
 use postgres_derive;
+use rouille::{input, Server, Request, Response};
 
 use super::nodes;
 use blockchain;
@@ -18,7 +16,8 @@ use errors::ServerError;
 use transactions;
 use wallet;
 
-#[derive(Serialize, Deserialize, FromSql, ToSql, Debug)]
+// TODO rename network structs to NetTransaction, NetBlock...
+#[derive(Serialize, Deserialize, RustcDecodable, FromSql, ToSql, Debug, Clone)]
 #[postgres(name="tx")]
 pub struct Transaction {
     id: String,
@@ -30,7 +29,7 @@ pub struct Transaction {
     signature: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, RustcDecodable, Debug, Clone)]
 pub struct Block {
     id: i32, // u32
     timestamp: i64,
@@ -40,109 +39,130 @@ pub struct Block {
     transactions: Vec<Transaction>, // this Transaction, not the one in transactions.rs
 }
 
-// Get general infos about node
-#[get("/")]
-fn get_index() -> String {
-    String::from("boo")
+fn get_index(req: &Request) -> Result<Response, ServerError> {
+    Ok(Response::text("Get /"))
 }
 
-// Send a transaction to node
-#[post("/transaction", data="<transaction>")]
-fn post_transaction(transaction: Json<Transaction>) -> Result<(), ServerError> {
-    let tx_json = transaction.into_inner();
+fn post_transaction(req: &Request) -> Result<Response, ServerError> {
+    let tx_body: Transaction = input::json_input(req)?;
 
-    let tx = transactions::Transaction::from(
-        &tx_json.id,
-        &tx_json.sender_addr,
-        &tx_json.sender_pubkey,
-        &tx_json.receiver_addr,
-        tx_json.amount,
-        tx_json.timestamp,
-        &tx_json.signature
+    let tx = transactions::from(
+        &tx_body.id,
+        &tx_body.sender_addr,
+        &tx_body.sender_pubkey,
+        &tx_body.receiver_addr,
+        tx_body.amount,
+        tx_body.timestamp,
+        &tx_body.signature
     )?;
-    println!("{:?}", tx.verify());
 
-    // if(tx.verify()) {
-    //     put code here after
-    // }
+    if(tx.verify()?) {
+        // XXX
+        let nodes = nodes::get_nodes_from_server()?;
+        nodes::save_nodes(&nodes)?;
 
-    // XXX
-    let nodes = nodes::get_nodes_from_server()?;
-    nodes::save_nodes(&nodes)?;
+        let (private_key, public_key, address) = wallet::get_identity()?;
+        println!("PKEY: {}", public_key.to_hex());
+        println!("ADDR: {}", address.to_base58());
 
-    // send transaction to known nodes
-    nodes::send_transaction(tx_json)?;
+        let receiver_addr: Vec<u8> = "6X8BeC3UjgZR3XyB6vhGrA1JJbzmeroVtM6uvJdcJtDe".from_base58()?;
 
-    // save transaction in db
-    tx.store_db()?;
+        let tx_tmp = transactions::new(
+            private_key, public_key, address, receiver_addr, 100
+        )?;
 
-    Ok(())
+        // send transaction to known nodes
+        nodes::send_transaction(tx_body)?;
+
+        // save transaction in db
+        tx.store_db()?;
+
+        Ok(Response::text(""))
+    } else {
+        Err(ServerError::InvalidTransaction)
+    }
 }
 
-#[post("/block", data="<block>")]
-fn post_block(block: Json<Block>) -> Result<(), ServerError> {
-    let block_json = block.into_inner();
+fn post_block(req: &Request) -> Result<Response, ServerError> {
+    let block: Block = input::json_input(req)?;
     let pool = blockchain::get_db_pool()?;
 
     let block_header = blocks::Header::from(
-        block_json.id, block_json.timestamp, &block_json.merkle_root
+        block.id, block.timestamp, &block.merkle_root
     )?;
 
-    let mined_hash: Vec<u8> = FromHex::from_hex(&block_json.hash)?;
+    let mined_hash: Vec<u8> = FromHex::from_hex(&block.hash)?;
 
-    let verified = blocks::verify(&block_header, &mined_hash, block_json.nonce)?;
+    let verified = blocks::verify(&block_header, &mined_hash, block.nonce)?;
 
     if verified {
         let query = "INSERT INTO blocks(id, timestamp, merkle_root, hash, nonce, transactions)
-            VALUES($1, $2, $3, $4, $5, $6)";   
-    
+            VALUES($1, $2, $3, $4, $5, $6)";
+
         thread::spawn(move || {
-        let conn = pool.get().unwrap();
-        match conn.execute(query, &[
-            &block_json.id,
-            &block_json.timestamp,
-            &block_json.merkle_root,
-            &block_json.hash,
-            &block_json.nonce,
-            &Array::from_vec(block_json.transactions, 0)
-        ]) {
+            let conn = pool.get().unwrap();
+            match conn.execute(query, &[
+                &block.id,
+                &block.timestamp,
+                &block.merkle_root,
+                &block.hash,
+                &block.nonce,
+                &Array::from_vec(block.transactions, 0)
+            ]) {
                 Ok(_) => {},
                 Err(e) => println!("{:?}", e) // FIXME do proper error handling
             }
         });
+
+        Ok(Response::text(""))
     } else {
-        println!("Invalid block");
+        Err(ServerError::InvalidBlock)
     }
-
-    // thread::spawn(move || {
-    //     let conn = pool.get().unwrap();
-    //     match conn.execute(query, &[
-    //         &block_json.id,
-    //         &block_json.timestamp,
-    //         &block_json.merkle_root,
-    //         &block_json.hash,
-    //         &block_json.nonce,
-    //         &Array::from_vec(block_json.transactions, 0)
-    //     ]) {
-    //         Ok(_) => {},
-    //         Err(e) => println!("{:?}", e) // FIXME do proper error handling
-    //     }
-    // });
-
-    Ok(())
 }
 
-pub fn start() -> Result<(), ServerError> {
+// route incoming request to matching handler
+fn route(req: &Request) -> Result<Response, ServerError> {
+    router!(req,
+        (GET) (/) => { get_index(req) },
+        (POST) (/transaction) => { post_transaction(req) },
+        (POST) (/block) => { post_block(req) },
+        _ => Err(ServerError::NotFound) // Err(NotFound)
+    )
+}
+
+// handle incoming request
+fn handle(req: &Request) -> Response {
+    println!("[+] {} {}", req.method(), req.raw_url());
+
+    match route(req) {
+        Ok(res) => res,
+        Err(e) => {
+            match e {
+                ServerError::NotFound => {
+                    Response::empty_404()
+                },
+                ServerError::InvalidTransaction => {
+                    Response::empty_400()
+                },
+                ServerError::InvalidBlock => {
+                    Response::empty_400()
+                }
+                _ => {
+                    println!("error: {:?}", e);
+                    Response::text("error")
+                }
+            }
+        }
+    }
+}
+
+// start the http server
+pub fn start() {
     println!("STARTING NODE...");
 
-    // TODO read address and port in config.json or other file
-    let config = Config::build(Environment::Staging)
-        .address("10.0.0.1")
-        .port(8000)
-        .finalize()?;
+    let server = Server::new("10.0.0.1:8000", |req| {
+        handle(&req)
+    }).unwrap();
 
-    let server = rocket::custom(config, true);
-    server.mount("/", routes![get_index, post_transaction, post_block]).launch();
-
-    Ok(())
+    server.run();
 }

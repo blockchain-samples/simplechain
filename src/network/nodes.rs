@@ -1,10 +1,9 @@
 use std::thread;
 use reqwest;
 use rusqlite::Connection;
-use rocket;
 
 use super::server::Transaction;
-use errors::ServerError;
+use errors::CoreError;
 
 #[derive(Deserialize, Debug)]
 pub struct Node {
@@ -21,7 +20,7 @@ pub struct Node {
 //     }
 // }
 
-pub fn get_nodes_from_server() -> Result<Vec<Node>, ServerError> {
+pub fn get_nodes_from_server() -> Result<Vec<Node>, CoreError> {
     let count = 16;
     let url = format!("http://localhost:3000/nodes?count={}", count);
 
@@ -30,7 +29,7 @@ pub fn get_nodes_from_server() -> Result<Vec<Node>, ServerError> {
     Ok(nodes)
 }
 
-pub fn save_nodes(nodes: &Vec<Node>) -> Result<(), ServerError> {
+pub fn save_nodes(nodes: &Vec<Node>) -> Result<(), CoreError> {
     let conn = Connection::open("db/storage.db")?;
 
     // delete previous nodes in db
@@ -47,7 +46,7 @@ pub fn save_nodes(nodes: &Vec<Node>) -> Result<(), ServerError> {
     Ok(())
 }
 
-fn get_nodes_from_db() -> Result<Vec<Node>, ServerError> {
+fn get_nodes_from_db() -> Result<Vec<Node>, CoreError> {
     let conn = Connection::open("db/storage.db")?;
 
     let mut stmt = conn.prepare("SELECT address, port FROM nodes")?;
@@ -70,7 +69,7 @@ fn get_nodes_from_db() -> Result<Vec<Node>, ServerError> {
     Ok(nodes)
 }
 
-pub fn send_transaction(tx: Transaction) -> Result<(), ServerError> {
+pub fn send_transaction(tx: Transaction) -> Result<(), CoreError> {
     let nodes = get_nodes_from_db()?;
 
     // spawn a thread to do not block the request

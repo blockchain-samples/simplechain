@@ -10,28 +10,30 @@ use hex::{FromHex, ToHex};
 use secp256k1;
 use secp256k1::key::{SecretKey, PublicKey};
 
-use errors::ServerError;
+use errors::CoreError;
 use utils;
 
+// TODO FIXME fix struct privacy (too many pub)
+
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct TransactionContent {
-    sender_addr: Vec<u8>,
-    sender_pubkey: Vec<u8>,
-    receiver_addr: Vec<u8>,
-    amount: i32,
-    timestamp: i64
+pub struct TransactionContent {
+    pub sender_addr: Vec<u8>,
+    pub sender_pubkey: Vec<u8>,
+    pub receiver_addr: Vec<u8>,
+    pub amount: i32,
+    pub timestamp: i64
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct TransactionSigned {
-    content: TransactionContent,
+pub struct TransactionSigned {
+    pub content: TransactionContent,
     signature: Vec<u8>
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Transaction {
     pub id: Vec<u8>,
-    transaction: TransactionSigned // bad field name...
+    pub transaction: TransactionSigned // bad field name...
 }
 
 impl TransactionContent {
@@ -39,7 +41,7 @@ impl TransactionContent {
     pub fn get_signature(
         &self,
         private_key: SecretKey
-    ) -> Result<Vec<u8>, ServerError> {
+    ) -> Result<Vec<u8>, CoreError> {
         println!("SIGN TRANSACTION");
 
         let secp = secp256k1::Secp256k1::new();
@@ -61,7 +63,7 @@ impl TransactionContent {
 
 impl TransactionSigned {
     // hash a transaction to create its id
-    pub fn get_id(&self) -> Result<Vec<u8>, ServerError> {
+    pub fn get_id(&self) -> Result<Vec<u8>, CoreError> {
         // serialize the signed tx
         let tx_signed_encoded: Vec<u8> = serialize(&self, Infinite)?;
 
@@ -73,96 +75,15 @@ impl TransactionSigned {
 }
 
 impl Transaction {
-    // create a transaction, sign it, hash it and return it
-    pub fn new(
-        sender_privkey: SecretKey,
-        sender_pubkey: Vec<u8>,
-        sender_addr: Vec<u8>,
-        receiver_addr: Vec<u8>,
-        amount: i32
-    ) -> Result<Transaction, ServerError> {
-        println!("CREATE TRANSACTION");
-
-        let timestamp: i64 = utils::get_current_timestamp();
-
-        let tx_content = TransactionContent {
-            sender_addr: sender_addr,
-            sender_pubkey: sender_pubkey,
-            receiver_addr: receiver_addr,
-            amount: amount,
-            timestamp: timestamp
-        };
-
-        // sign the current tx content
-        let signature: Vec<u8> = tx_content.get_signature(sender_privkey)?;
-
-        // create a signed tx with the signature
-        let tx_signed = TransactionSigned {
-            content: tx_content,
-            signature: signature
-        };
-
-        // get the tx id (hash) using the signed tx content
-        let id: Vec<u8> = tx_signed.get_id()?;
-
-        //  TODO maybe rewrite this by removing the struct nesting
-        // this will be easier for cross-language
-        // Transaction {
-        //     id: ...
-        //     sender_addr: ...
-        //     ...
-        //     signature: ...
-        // }
-        // but be careful maybe recreating Transaction with TransactionContent's
-        // and TransactionSigned's fields will make the signature obsolete
-
-        // return the final tx
-        Ok(Transaction {
-            id: id,
-            transaction: tx_signed
-        })
-    }
-
-    // return a Transaction struct filled with given field values
-    pub fn from(
-        id: &String,
-        sender_addr: &String,
-        sender_pubkey: &String,
-        receiver_addr: &String,
-        amount: i32,
-        timestamp: i64,
-        signature: &String,
-    ) -> Result<Transaction, ServerError> {
-        let id: Vec<u8> = FromHex::from_hex(id)?;
-        let sender_addr: Vec<u8> = sender_addr.from_base58()?;
-        let sender_pubkey: Vec<u8> = FromHex::from_hex(sender_pubkey)?;
-        let receiver_addr: Vec<u8> = receiver_addr.from_base58()?;
-        let signature: Vec<u8> = FromHex::from_hex(signature)?;
-
-        Ok(Transaction {
-            id: id,
-            transaction: TransactionSigned {
-                content: TransactionContent {
-                    sender_addr: sender_addr,
-                    sender_pubkey: sender_pubkey,
-                    receiver_addr: receiver_addr,
-                    amount: amount,
-                    timestamp: timestamp
-                },
-                signature: signature,
-            },
-        })
-    }
-
     // create a transaction from raw bytes
-    pub fn from_bytes(data: &Vec<u8>) -> Result<Transaction, ServerError> {
+    pub fn from_bytes(data: &Vec<u8>) -> Result<Transaction, CoreError> {
         // read data and deserialize into a Transaction struct
         let tx: Transaction = deserialize(&data[..])?;
         Ok(tx)
     }
 
     // verify a transaction using the signature and the public key
-    pub fn verify(&self) -> Result<bool, ServerError> {
+    pub fn verify(&self) -> Result<bool, CoreError> {
         println!("VERIFY TRANSACTION");
 
         let secp = secp256k1::Secp256k1::new();
@@ -176,6 +97,7 @@ impl Transaction {
 
         // create the input message using the hashed tx content
         let input = secp256k1::Message::from_slice(tx_hashed.as_slice())?;
+
         // retrieve sig and pbkey from the tx
         let signature = secp256k1::schnorr::Signature::deserialize(&self.transaction.signature);
         let public_key = PublicKey::from_slice(
@@ -183,14 +105,17 @@ impl Transaction {
         )?;
 
         // verify the input message using the signature and pbkey
-        match secp.verify_schnorr(&input, &signature, &public_key) {
-            Ok(()) => Ok(true),
-            _ => Ok(false)
-        }
+        Ok(
+            match secp.verify_schnorr(&input, &signature, &public_key) {
+                Ok(()) => true,
+                _ => false
+            }
+        )
     }
 
     // store a transaction on database (cache) for further block creation
-    pub fn store_db(&self) -> Result<(), ServerError> {
+    // TODO rewrite this with redis
+    pub fn store_db(&self) -> Result<(), CoreError> {
         println!("STORE TRANSACTION [DB]");
         // TODO rewrite this with connection pools
         // TODO get the db address string from config.json
@@ -213,8 +138,98 @@ impl Transaction {
     }
 }
 
+// create a transaction, sign it, hash it and return it
+pub fn new(
+    sender_privkey: SecretKey,
+    sender_pubkey: Vec<u8>,
+    sender_addr: Vec<u8>,
+    receiver_addr: Vec<u8>,
+    amount: i32
+) -> Result<Transaction, CoreError> {
+    println!("CREATE TRANSACTION");
+
+    let timestamp: i64 = utils::get_current_timestamp();
+
+    let tx_content = TransactionContent {
+        sender_addr: sender_addr,
+        sender_pubkey: sender_pubkey,
+        receiver_addr: receiver_addr,
+        amount: amount,
+        timestamp: timestamp
+    };
+
+    // sign the current tx content
+    let signature: Vec<u8> = tx_content.get_signature(sender_privkey)?;
+
+    // create a signed tx with the signature
+    let tx_signed = TransactionSigned {
+        content: tx_content,
+        signature: signature
+    };
+
+    // get the tx id (hash) using the signed tx content
+    let id: Vec<u8> = tx_signed.get_id()?;
+
+    //  TODO maybe rewrite this by removing the struct nesting
+    // this will be easier for cross-language
+    // Transaction {
+    //     id: ...
+    //     sender_addr: ...
+    //     ...
+    //     signature: ...
+    // }
+    // but be careful maybe recreating Transaction with TransactionContent's
+    // and TransactionSigned's fields will make the signature obsolete
+
+    // TEST
+    // println!("id: {}", id.to_hex());
+    // println!("sender_addr: {}", tx_signed.content.sender_addr.to_base58());
+    // println!("sender_pubkey: {}", tx_signed.content.sender_pubkey.to_hex());
+    // println!("receiver_addr: {}", tx_signed.content.receiver_addr.to_base58());
+    // println!("amount: {}", tx_signed.content.amount);
+    // println!("timestamp: {}", tx_signed.content.timestamp);
+    // println!("signature: {}", tx_signed.signature.to_hex());
+
+    // return the final tx
+    Ok(Transaction {
+        id: id,
+        transaction: tx_signed
+    })
+}
+
+// return a Transaction struct filled with given field values
+pub fn from(
+    id: &String,
+    sender_addr: &String,
+    sender_pubkey: &String,
+    receiver_addr: &String,
+    amount: i32,
+    timestamp: i64,
+    signature: &String,
+) -> Result<Transaction, CoreError> {
+    let id: Vec<u8> = FromHex::from_hex(id)?;
+    let sender_addr: Vec<u8> = sender_addr.from_base58()?;
+    let sender_pubkey: Vec<u8> = FromHex::from_hex(sender_pubkey)?;
+    let receiver_addr: Vec<u8> = receiver_addr.from_base58()?;
+    let signature: Vec<u8> = FromHex::from_hex(signature)?;
+
+    Ok(Transaction {
+        id: id,
+        transaction: TransactionSigned {
+            content: TransactionContent {
+                sender_addr: sender_addr,
+                sender_pubkey: sender_pubkey,
+                receiver_addr: receiver_addr,
+                amount: amount,
+                timestamp: timestamp
+            },
+            signature: signature,
+        },
+    })
+}
+
 // read all cached database transactions
-pub fn read_db() -> Result<Vec<Transaction>, ServerError> {
+pub fn read_db() -> Result<Vec<Transaction>, CoreError> {
     println!("READ TRANSACTIONS [DB]");
     // TODO rewrite this with connection pools
     let conn = Connection::open("db/storage.db")?;
@@ -258,7 +273,7 @@ pub fn read_db() -> Result<Vec<Transaction>, ServerError> {
 }
 
 // delete all cached transactions from database
-pub fn clean_db() -> Result<(), ServerError> {
+pub fn clean_db() -> Result<(), CoreError> {
     println!("CLEAN TRANSACTIONS [DB]");
     // TODO rewrite this with connection pools
     // TODO get the db address string from config.json
@@ -269,7 +284,7 @@ pub fn clean_db() -> Result<(), ServerError> {
 }
 
 // // store a transaction on disk (cache) for further block creation
-// pub fn store_disk(tx: &Transaction) -> Result<(), ServerError> {
+// pub fn store_disk(tx: &Transaction) -> Result<(), CoreError> {
 //     println!("STORE TRANSACTION [DISK]");
 //     let tx_encoded: Vec<u8> = serialize(&tx, Infinite)?;
 //     let tx_dir_path = Path::new("./transactions");
@@ -324,7 +339,7 @@ pub fn clean_db() -> Result<(), ServerError> {
 // }
 //
 // // delete all cached transactions from disk
-// pub fn clean_disk() -> Result<(), ServerError> {
+// pub fn clean_disk() -> Result<(), CoreError> {
 //     println!("CLEAN TRANSACTIONS [DISK]");
 //     Ok(())
 // }
