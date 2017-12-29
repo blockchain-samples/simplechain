@@ -10,8 +10,6 @@ use r2d2::InitializationError as R2d2InitializationError;
 
 use rouille::input::json::JsonError;
 
-// TODO split in two error types: NetError and CoreError?
-
 #[derive(Debug)]
 pub enum CoreError {
     // FIXME change those generic names to more specific errors

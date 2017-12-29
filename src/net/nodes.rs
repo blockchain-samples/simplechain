@@ -2,6 +2,7 @@ use std::thread;
 use reqwest;
 use rusqlite::Connection;
 
+use super::NetTransaction;
 use errors::CoreError;
 
 #[derive(Deserialize, Debug)]
@@ -23,6 +24,7 @@ pub fn get_nodes_from_server() -> Result<Vec<Node>, CoreError> {
     let count = 16;
     let url = format!("http://localhost:3000/nodes?count={}", count);
 
+    // TODO handle if server is down
     let nodes: Vec<Node> = reqwest::get(&url)?.json()?;
 
     Ok(nodes)
@@ -68,7 +70,9 @@ fn get_nodes_from_db() -> Result<Vec<Node>, CoreError> {
     Ok(nodes)
 }
 
-pub fn send_transaction(tx: super::Transaction) -> Result<(), CoreError> {
+// TODO do not send to the node who already sent us something
+
+pub fn send_transaction(tx: NetTransaction) -> Result<(), CoreError> {
     let nodes = get_nodes_from_db()?;
 
     // spawn a thread to do not block the request

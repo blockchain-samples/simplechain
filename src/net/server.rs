@@ -9,6 +9,8 @@ fn route(req: &Request) -> Result<Response, ServerError> {
         (GET) (/) => { handlers::get_index(req) },
         (POST) (/transaction) => { handlers::post_transaction(req) },
         (POST) (/block) => { handlers::post_block(req) },
+        (GET) (/local/wallet) => { handlers::local::get_wallet(req) },
+        (POST) (/local/transaction) => { handlers::local::post_transaction(req) },
         _ => Err(ServerError::NotFound) // Err(NotFound)
     )
 }
@@ -29,7 +31,7 @@ fn handle(req: &Request) -> Response {
                 },
                 ServerError::InvalidBlock => {
                     Response::empty_400()
-                }
+                },
                 _ => {
                     println!("error: {:?}", e);
                     Response::text("error")

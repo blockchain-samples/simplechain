@@ -65,6 +65,8 @@ impl Block {
     }
 }
 
+// TODO add transactions dynamicallyto the block as they come
+// (recalculate merkle_root for every new transaction and try to mine the new merkle_root)
 pub fn new() -> Result<(), CoreError> {
     println!("CREATE BLOCK");
 
@@ -98,9 +100,7 @@ pub fn new() -> Result<(), CoreError> {
         merkle_root: merkle_root,
     };
 
-    // TODO [NOT SURE] instead of mining the header, mine what is INSIDE the header, then create the header
-    // with id, timestamp, merkle_root, hash and nonce (cleaner)
-    let (hash, nonce) = mine(&header)?; // so this becomes mine(&id, &timestamp, &merkle_root);
+    let (hash, nonce) = mine(&header)?;
 
     // FIXME bad! we read database two times (should use previous transactions Vec)
     let transactions = transactions::read_db()?;
@@ -116,24 +116,6 @@ pub fn new() -> Result<(), CoreError> {
 
     Ok(())
 }
-
-// pub fn store_db(block: &Block) -> Result<(), CoreError> {
-//     println!("STORE BLOCK [DB]");
-//
-//     let cfg = Config {
-//         pretty: false,
-//         indent: 2,
-//         single: true
-//     };
-//     let db = Store::new_with_cfg("blockchain", cfg)?;
-//
-//     let id = db.save_with_id(block, &block.header.id.to_string())?;
-//
-//     Ok(())
-//
-//     // let ev = db.get::<Block>(&id).unwrap();
-//     // println!("{:?}", ev);
-// }
 
 // mine a block with the block's header
 fn mine(header: &Header) -> Result<(Vec<u8>, i64), CoreError> {

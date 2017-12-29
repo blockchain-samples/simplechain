@@ -6,7 +6,8 @@ use sha2::{Sha256, Digest};
 use errors::CoreError;
 
 // returns the private key, public key and address
-pub fn get_identity() -> Result<(SecretKey, Vec<u8>, Vec<u8>), CoreError> {
+// XXX maybe send a Wallet struct instead of three variables?
+pub fn get_wallet() -> Result<(SecretKey, Vec<u8>, Vec<u8>), CoreError> {
     let secp = Secp256k1::new();
     let mut rng = rand::thread_rng();
 

@@ -18,6 +18,7 @@ extern crate r2d2_postgres;
 extern crate postgres_array;
 #[macro_use] extern crate rouille;
 extern crate rustc_serialize;
+extern crate jfs;
 
 mod blockchain;
 mod blocks;

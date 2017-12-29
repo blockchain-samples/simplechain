@@ -6,6 +6,7 @@ use hex::{FromHex, ToHex};
 use secp256k1;
 use secp256k1::key::{SecretKey, PublicKey};
 
+use net::NetTransaction;
 use errors::CoreError;
 use utils;
 
@@ -79,7 +80,7 @@ impl Transaction {
     }
 
     // verify a transaction using the signature and the public key
-    pub fn verify(&self) -> Result<bool, CoreError> {
+    pub fn is_valid(&self) -> Result<bool, CoreError> {
         println!("VERIFY TRANSACTION");
 
         let secp = secp256k1::Secp256k1::new();
@@ -134,14 +135,14 @@ impl Transaction {
     }
 }
 
-// create a transaction, sign it, hash it and return it
+// create a transaction, sign it, hash it and return a network version of it
 pub fn new(
     sender_privkey: SecretKey,
     sender_pubkey: Vec<u8>,
     sender_addr: Vec<u8>,
     receiver_addr: Vec<u8>,
     amount: i32
-) -> Result<Transaction, CoreError> {
+) -> Result<NetTransaction, CoreError> {
     println!("CREATE TRANSACTION");
 
     let timestamp: i64 = utils::get_current_timestamp();
@@ -178,18 +179,38 @@ pub fn new(
     // and TransactionSigned's fields will make the signature obsolete
 
     // TEST
-    // println!("id: {}", id.to_hex());
-    // println!("sender_addr: {}", tx_signed.content.sender_addr.to_base58());
-    // println!("sender_pubkey: {}", tx_signed.content.sender_pubkey.to_hex());
-    // println!("receiver_addr: {}", tx_signed.content.receiver_addr.to_base58());
-    // println!("amount: {}", tx_signed.content.amount);
-    // println!("timestamp: {}", tx_signed.content.timestamp);
-    // println!("signature: {}", tx_signed.signature.to_hex());
+    println!("-- TRANSACTION --");
+    println!("id: {}", id.to_hex());
+    println!("sender_addr: {}", tx_signed.content.sender_addr.to_base58());
+    println!("sender_pubkey: {}", tx_signed.content.sender_pubkey.to_hex());
+    println!("receiver_addr: {}", tx_signed.content.receiver_addr.to_base58());
+    println!("amount: {}", tx_signed.content.amount);
+    println!("timestamp: {}", tx_signed.content.timestamp);
+    println!("signature: {}", tx_signed.signature.to_hex());
 
     // return the final tx
-    Ok(Transaction {
+    // Ok(Transaction {
+    //     id: id,
+    //     transaction: tx_signed
+    // })
+
+    // return the final network transaction
+    let id = id.to_hex();
+    let sender_addr = tx_signed.content.sender_addr.to_base58();
+    let sender_pubkey = tx_signed.content.sender_pubkey.to_hex();
+    let receiver_addr = tx_signed.content.receiver_addr.to_base58();
+    let amount = tx_signed.content.amount;
+    let timestamp = tx_signed.content.timestamp;
+    let signature = tx_signed.signature.to_hex();
+
+    Ok(NetTransaction {
         id: id,
-        transaction: tx_signed
+        sender_addr: sender_addr,
+        sender_pubkey: sender_pubkey,
+        receiver_addr: receiver_addr,
+        amount: amount,
+        timestamp: timestamp,
+        signature: signature
     })
 }
 
@@ -278,64 +299,3 @@ pub fn clean_db() -> Result<(), CoreError> {
     conn.execute("DELETE FROM transactions", &[])?;
     Ok(())
 }
-
-// // store a transaction on disk (cache) for further block creation
-// pub fn store_disk(tx: &Transaction) -> Result<(), CoreError> {
-//     println!("STORE TRANSACTION [DISK]");
-//     let tx_encoded: Vec<u8> = serialize(&tx, Infinite)?;
-//     let tx_dir_path = Path::new("./transactions");
-//
-//     let ready: bool = match fs::create_dir(tx_dir_path) {
-//         Ok(_) => true,
-//         Err(e) => match e.kind() {
-//             ErrorKind::AlreadyExists => true,
-//             _ => false,
-//         },
-//     };
-//
-//     if ready {
-//         let tx_dir = fs::read_dir(tx_dir_path)?;
-//         let tx_file_path = tx_dir_path.join(format!("tx{}.bin", tx_dir.count() + 1));
-//         let mut tx_file = File::create(tx_file_path)?;
-//
-//         tx_file.write_all(&tx_encoded)?;
-//     }
-//
-//     Ok(())
-// }
-//
-// // read all cached (on disk) transactions
-// pub fn read_disk() -> Result<Vec<Transaction>, String> {
-//     println!("READ TRANSACTIONS [DISK]");
-//     let tx_dir_path = Path::new("./transactions");
-//
-//     let ready: bool = match fs::read_dir(tx_dir_path) {
-//         Ok(_) => true,
-//         Err(e) => false,
-//     };
-//
-//     if ready {
-//         let tx_dir = fs::read_dir(tx_dir_path)?;
-//         let mut transactions: Vec<Transaction> = Vec::new();
-//
-//         for tx_file in tx_dir {
-//             let mut tx_file = File::open(tx_file?.path())?;
-//             let mut buffer = vec![0; 1024];
-//
-//             tx_file.read(&mut buffer);
-//
-//             let tx: Transaction = deserialize(&buffer[..])?;
-//             transactions.push(tx);
-//         }
-//
-//         Ok(transactions)
-//     } else {
-//         Err(String::from("Error"))
-//     }
-// }
-//
-// // delete all cached transactions from disk
-// pub fn clean_disk() -> Result<(), CoreError> {
-//     println!("CLEAN TRANSACTIONS [DISK]");
-//     Ok(())
-// }
