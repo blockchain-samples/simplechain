@@ -5,12 +5,13 @@ use base58::{FromBase58, ToBase58};
 use hex::{FromHex, ToHex};
 use secp256k1;
 use secp256k1::key::{SecretKey, PublicKey};
+use jfs;
 
-use net::NetTransaction;
+use net::{NetTransaction, NetKeyPair};
 use errors::CoreError;
 use utils;
 
-// TODO FIXME fix struct privacy (too many pub)
+// FIXME too many public fields
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct TransactionContent {
@@ -24,7 +25,7 @@ pub struct TransactionContent {
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct TransactionSigned {
     pub content: TransactionContent,
-    signature: Vec<u8>
+    pub signature: Vec<u8>
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -167,17 +168,6 @@ pub fn new(
     // get the tx id (hash) using the signed tx content
     let id: Vec<u8> = tx_signed.get_id()?;
 
-    //  TODO maybe rewrite this by removing the struct nesting
-    // this will be easier for cross-language
-    // Transaction {
-    //     id: ...
-    //     sender_addr: ...
-    //     ...
-    //     signature: ...
-    // }
-    // but be careful maybe recreating Transaction with TransactionContent's
-    // and TransactionSigned's fields will make the signature obsolete
-
     // TEST
     println!("-- TRANSACTION --");
     println!("id: {}", id.to_hex());
@@ -187,12 +177,6 @@ pub fn new(
     println!("amount: {}", tx_signed.content.amount);
     println!("timestamp: {}", tx_signed.content.timestamp);
     println!("signature: {}", tx_signed.signature.to_hex());
-
-    // return the final tx
-    // Ok(Transaction {
-    //     id: id,
-    //     transaction: tx_signed
-    // })
 
     // return the final network transaction
     let id = id.to_hex();
@@ -212,6 +196,12 @@ pub fn new(
         timestamp: timestamp,
         signature: signature
     })
+
+    // return the final tx
+    // Ok(Transaction {
+    //     id: id,
+    //     transaction: tx_signed
+    // })
 }
 
 // return a Transaction struct filled with given field values
@@ -245,10 +235,58 @@ pub fn from(
     })
 }
 
+pub fn coinbase() -> Result<Transaction, CoreError> {
+    println!("CREATE COINBASE TRANSACTION");
+    // retrieve wallet entry from storage
+    // XXX this is ugly, we read for the address and then read again for private_key and public_key
+    // we should do everything at once without reading twice
+    let cfg = jfs::Config {
+        pretty: true,
+        indent: 4,
+        single: true
+    };
+    let storage = jfs::Store::new_with_cfg("storage/wallet", cfg).unwrap();
+    let wallets = storage.all::<NetKeyPair>().unwrap();
+
+    let wallet = wallets.iter().nth(0);
+
+    let address = match wallet {
+        Some(w) => w.0.from_base58()?,
+        None => return Err(CoreError::WalletError)
+    };
+
+    // create coinbase value
+    let coinbase = String::from("coinbase").into_bytes();
+
+    let timestamp: i64 = utils::get_current_timestamp();
+
+    let tx_content = TransactionContent {
+        sender_addr: coinbase.clone(),
+        sender_pubkey: coinbase.clone(),
+        receiver_addr: address,
+        amount: 50, // XXX FIXME amount is hardcoded for now
+        timestamp: timestamp
+    };
+
+    let tx_signed = TransactionSigned {
+        content: tx_content,
+        signature: coinbase
+    };
+
+    // get the tx id (hash) using the signed tx content
+    let id: Vec<u8> = tx_signed.get_id()?;
+
+    // return the final tx
+    Ok(Transaction {
+        id: id,
+        transaction: tx_signed
+    })
+}
+
+// TODO rewrite this with redis
 // read all cached database transactions
 pub fn read_db() -> Result<Vec<Transaction>, CoreError> {
     println!("READ TRANSACTIONS [DB]");
-    // TODO rewrite this with connection pools
     let conn = Connection::open("db/storage.db")?;
 
     let mut transactions: Vec<Transaction> = Vec::new();
@@ -259,6 +297,7 @@ pub fn read_db() -> Result<Vec<Transaction>, CoreError> {
     )?;
 
     let rows = stmt.query_map(&[], |row| {
+        // FIXME use column names instead of indexes
         let id: String = row.get(0);
         let sender_addr: String = row.get(1);
         let sender_pubkey: String = row.get(2);

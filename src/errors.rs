@@ -7,6 +7,7 @@ use base58::FromBase58Error;
 use bincode::ErrorKind as BincodeError;
 use secp256k1::Error as Secp256k1Error;
 use r2d2::InitializationError as R2d2InitializationError;
+use postgres::Error as PostgresError;
 
 use rouille::input::json::JsonError;
 
@@ -17,7 +18,8 @@ pub enum CoreError {
     HttpError,
     DatabaseError,
     SerializeError,
-    CryptoError
+    CryptoError,
+    WalletError
 }
 
 impl From<StdError> for CoreError {
@@ -64,6 +66,12 @@ impl From<Secp256k1Error> for CoreError {
 
 impl From<R2d2InitializationError> for CoreError {
     fn from(_: R2d2InitializationError) -> CoreError {
+        CoreError::DatabaseError
+    }
+}
+
+impl From<PostgresError> for CoreError {
+    fn from(_: PostgresError) -> CoreError {
         CoreError::DatabaseError
     }
 }
