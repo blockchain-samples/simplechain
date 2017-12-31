@@ -35,13 +35,13 @@ pub fn post_transaction(req: &Request) -> Result<Response, ServerError> {
         blockchain::scan()?;
 
         // send transaction to known nodes
-        nodes::send_transaction(tx_body)?;
+        // nodes::send_transaction(tx_body)?;
 
         // save transaction in db
-        tx.store_db()?;
+        // tx.store_db()?;
 
         // create a new block with the new transaction
-        // TODO use thrads (safely)
+        // TODO use threads (safely)
         // kill previous thread if we respawn one to recreate a block, otherwise the user will keep mining old block
         blocks::new()?;
 

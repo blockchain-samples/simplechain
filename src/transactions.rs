@@ -250,7 +250,7 @@ pub fn coinbase() -> Result<Transaction, CoreError> {
     };
 
     // create coinbase value
-    let coinbase = String::from("coinbase").into_bytes();
+    let coinbase: Vec<u8> = vec![0];
 
     let timestamp: i64 = utils::get_current_timestamp();
 

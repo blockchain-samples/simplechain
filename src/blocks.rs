@@ -96,9 +96,15 @@ pub fn new() -> Result<(), CoreError> {
     // transactions::clean_db() // XXX don't uncomment now because we retrieve from database again below
 
     // create a hash list with all tx ids
-    let tx_hash_list: Vec<Vec<u8>> = transactions.into_iter()
-        .map(|tx| tx.id)
-        .collect();
+    // XXX this consumes the transactions vec, but we need it again later
+    // let tx_hash_list: Vec<Vec<u8>> = transactions.into_iter()
+    //     .map(|tx| tx.id)
+    //     .collect();
+
+    let mut tx_hash_list: Vec<Vec<u8>> = Vec::new();
+    for tx in &transactions {
+        tx_hash_list.push(tx.id.clone()); // XXX maybe there is a better way than calling `clone()`
+    }
 
     // get merkle root of all tx using the hash list
     let merkle_root: Vec<u8> = get_merkle_root(&tx_hash_list);
@@ -122,7 +128,7 @@ pub fn new() -> Result<(), CoreError> {
     let (hash, nonce) = mine(&header)?;
 
     // FIXME bad! we read database two times (should use previous transactions Vec)
-    let transactions = transactions::read_db()?;
+    // let transactions = transactions::read_db()?;
 
     let block: Block = Block {
         header: header,

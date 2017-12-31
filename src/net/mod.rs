@@ -51,10 +51,25 @@ impl NetBlock {
         // maybe find a better solution that requires less iterations?
         let net_txs: Vec<NetTransaction> = block.transactions.into_iter().map(|tx| {
             let id = tx.id.to_hex();
-            let sender_addr = tx.transaction.content.sender_addr.to_base58();
-            let sender_pubkey = tx.transaction.content.sender_pubkey.to_hex();
             let receiver_addr = tx.transaction.content.receiver_addr.to_base58();
-            let signature = tx.transaction.signature.to_hex();
+
+            let sender_addr: String;
+            let sender_pubkey: String;
+            let signature: String;
+
+            // test if the transaction isn't coinbase
+            // TODO also test if transaction it at index 0 in block
+            if tx.transaction.content.sender_addr == vec![0]
+            && tx.transaction.content.sender_pubkey == vec![0]
+            && tx.transaction.signature == vec![0] {
+                sender_addr = String::from("0");
+                sender_pubkey = String::from("0");
+                signature = String::from("0");
+            } else {
+                sender_addr = tx.transaction.content.sender_addr.to_base58();
+                sender_pubkey = tx.transaction.content.sender_pubkey.to_hex();
+                signature = tx.transaction.signature.to_hex();
+            }
 
             NetTransaction {
                 id: id,
