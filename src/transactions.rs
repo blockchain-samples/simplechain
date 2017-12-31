@@ -196,12 +196,6 @@ pub fn new(
         timestamp: timestamp,
         signature: signature
     })
-
-    // return the final tx
-    // Ok(Transaction {
-    //     id: id,
-    //     transaction: tx_signed
-    // })
 }
 
 // return a Transaction struct filled with given field values
@@ -284,6 +278,7 @@ pub fn coinbase() -> Result<Transaction, CoreError> {
 }
 
 // TODO rewrite this with redis
+// XXX maybe return a NetTransaction directly?
 // read all cached database transactions
 pub fn read_db() -> Result<Vec<Transaction>, CoreError> {
     println!("READ TRANSACTIONS [DB]");
@@ -296,8 +291,7 @@ pub fn read_db() -> Result<Vec<Transaction>, CoreError> {
         FROM transactions"
     )?;
 
-    let rows = stmt.query_map(&[], |row| {
-        // FIXME use column names instead of indexes
+    let net_txs = stmt.query_map(&[], |row| {
         let id: String = row.get(0);
         let sender_addr: String = row.get(1);
         let sender_pubkey: String = row.get(2);
@@ -306,23 +300,35 @@ pub fn read_db() -> Result<Vec<Transaction>, CoreError> {
         let timestamp: i64 = row.get(5);
         let signature: String = row.get(6);
 
-        Transaction {
-            id: id.into_bytes(),
-            transaction: TransactionSigned {
-                content: TransactionContent {
-                    sender_addr: sender_addr.into_bytes(),
-                    sender_pubkey: sender_pubkey.into_bytes(),
-                    receiver_addr: receiver_addr.into_bytes(),
-                    amount: amount,
-                    timestamp: timestamp
-                },
-                signature: signature.into_bytes()
-            }
+        NetTransaction {
+            id: id,
+            sender_addr: sender_addr,
+            sender_pubkey: sender_pubkey,
+            receiver_addr: receiver_addr,
+            amount: amount,
+            timestamp: timestamp,
+            signature: signature
         }
     })?;
 
-    for tx in rows {
-        transactions.push(tx?);
+    for net_tx in net_txs {
+        let net_tx = net_tx?;
+
+        let tx = Transaction {
+            id: FromHex::from_hex(net_tx.id)?,
+            transaction: TransactionSigned {
+                content: TransactionContent {
+                    sender_addr: net_tx.sender_addr.from_base58()?,
+                    sender_pubkey: FromHex::from_hex(net_tx.sender_pubkey)?,
+                    receiver_addr: net_tx.receiver_addr.from_base58()?,
+                    amount: net_tx.amount,
+                    timestamp: net_tx.timestamp
+                },
+                signature: FromHex::from_hex(net_tx.signature)?
+            }
+        };
+
+        transactions.push(tx);
     }
 
     Ok(transactions)

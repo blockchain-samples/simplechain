@@ -3,7 +3,7 @@ use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 use postgres_array::Array;
 use hex::FromHex;
 
-use net::NetBlock;
+use net::{NetBlock, NetTransaction};
 use errors::CoreError;
 
 fn get_db_pool() -> Result<Pool<PostgresConnectionManager>, CoreError> {
@@ -48,7 +48,7 @@ pub fn get_previous_id() -> Result<i32, CoreError> {
 
     if !rows.is_empty() {
         let row = rows.get(0);
-        let id: i32 = row.get("id");
+        let id: i32 = row.get("id"); // TODO access by index (more efficient)
 
         Ok(id)
     } else {
@@ -65,7 +65,7 @@ pub fn get_previous_hash() -> Result<Vec<u8>, CoreError> {
 
     if !rows.is_empty() {
         let row = rows.get(0);
-        let hash: String = row.get("hash");
+        let hash: String = row.get("hash"); // TODO access by index (more efficient)
         let hash_bytes: Vec<u8> = FromHex::from_hex(hash)?;
 
         Ok(hash_bytes)
@@ -73,5 +73,35 @@ pub fn get_previous_hash() -> Result<Vec<u8>, CoreError> {
         // genesis
         let zero_hash: Vec<u8> = vec![0];
         Ok(zero_hash)
+    }
+}
+
+pub fn scan() -> Result<(), CoreError> {
+    let pool = get_db_pool()?;
+    let conn = pool.get().unwrap();
+
+    let query = "SELECT transactions FROM blocks";
+    let rows = conn.query(query, &[])?;
+
+    if !rows.is_empty() {
+        // let block_transactions: Vec<Vec<NetTransaction>> = Vec::new();
+        for (i, row) in rows.iter().enumerate() {
+            let transactions: Vec<NetTransaction> = rows.get(i).get(0);
+
+            for tx in transactions {
+                println!("{} ({}) -> {}", tx.sender_addr, tx.amount, tx.receiver_addr);
+            }
+
+            println!("\n---------\n");
+
+            // let sender_addr: String = row.get("sender_addr");
+            // let amount: i32 = row.get("amount");
+            // let receiver_addr: String = row.get("receiver_addr");
+            // println!("{} -> {} -> {}", sender_addr, amount, receiver_addr);
+        }
+
+        Ok(())
+    } else {
+        Err(CoreError::IoError) // XXX proper handle
     }
 }

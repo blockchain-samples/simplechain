@@ -7,7 +7,7 @@ use base58::FromBase58;
 use hex::FromHex;
 use jfs;
 
-use net::{NetKeyPair, NetWallet};
+use net::NetKeyPair;
 use errors::CoreError;
 
 pub struct Wallet {

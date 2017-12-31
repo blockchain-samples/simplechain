@@ -32,6 +32,8 @@ pub fn post_transaction(req: &Request) -> Result<Response, ServerError> {
         // let nodes = nodes::get_nodes_from_server()?;
         // nodes::save_nodes(&nodes)?;
 
+        blockchain::scan()?;
+
         // send transaction to known nodes
         nodes::send_transaction(tx_body)?;
 

@@ -164,7 +164,7 @@ fn proof_of_work(hash: &Vec<u8>) -> Result<(Vec<u8>, i64), CoreError> {
     let mut rng = rand::thread_rng(); // TODO check if we can reuse this (is it secure) or should we recreate one every time
     // XXX what if `nonce: i64` isn't big enough to hold the value that will allow to find the correct hash?
     let mut nonce: i64 = 0;
-    let n: usize = 4; // this is basically the difficulty (n is bigger -> less probability to find a good hash)
+    let n: usize = 2; // this is basically the difficulty (n is bigger -> less probability to find a good hash)
     let mut hash_final = hash.clone().to_hex();
 
     // while the leading bytes aren't some 0s
