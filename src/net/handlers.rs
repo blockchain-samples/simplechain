@@ -43,7 +43,7 @@ pub fn post_transaction(req: &Request) -> Result<Response, ServerError> {
         // create a new block with the new transaction
         // TODO use threads (safely)
         // kill previous thread if we respawn one to recreate a block, otherwise the user will keep mining old block
-        blocks::new()?;
+        // blocks::new()?;
 
         Ok(Response::text(""))
     } else {
@@ -61,6 +61,9 @@ pub fn post_block(req: &Request) -> Result<Response, ServerError> {
     let mined_hash: Vec<u8> = FromHex::from_hex(&block.hash)?;
 
     let verified = blocks::verify(&block_header, &mined_hash, block.nonce)?;
+
+    // TODO verify coinbase transaction
+    // (if it's first transaction in transactions vec + field verifications)
 
     if verified {
         // XXX is this safe?

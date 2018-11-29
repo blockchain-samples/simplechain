@@ -76,6 +76,13 @@ pub fn get_previous_hash() -> Result<Vec<u8>, CoreError> {
     }
 }
 
+#[derive(Debug)]
+struct LedgerEntry {
+    sender_addr: String,
+    receiver_addr: String,
+    amount: i32
+}
+
 pub fn scan() -> Result<(), CoreError> {
     let pool = get_db_pool()?;
     let conn = pool.get().unwrap();
@@ -83,25 +90,65 @@ pub fn scan() -> Result<(), CoreError> {
     let query = "SELECT transactions FROM blocks";
     let rows = conn.query(query, &[])?;
 
+    let mut ledger: Vec<Vec<(String, String, i32)>> = Vec::new();
+
     if !rows.is_empty() {
-        // let block_transactions: Vec<Vec<NetTransaction>> = Vec::new();
-        for (i, row) in rows.iter().enumerate() {
+        for (i, _) in rows.iter().enumerate() {
             let transactions: Vec<NetTransaction> = rows.get(i).get(0);
 
-            for tx in transactions {
-                println!("{} ({}) -> {}", tx.sender_addr, tx.amount, tx.receiver_addr);
-            }
+            let block_ledger: Vec<(String, String, i32)> = transactions.into_iter().map(|tx| {
+                (tx.sender_addr, tx.receiver_addr, tx.amount)
+            }).collect();
 
-            println!("\n---------\n");
-
-            // let sender_addr: String = row.get("sender_addr");
-            // let amount: i32 = row.get("amount");
-            // let receiver_addr: String = row.get("receiver_addr");
-            // println!("{} -> {} -> {}", sender_addr, amount, receiver_addr);
+            ledger.push(block_ledger);
         }
-
-        Ok(())
     } else {
-        Err(CoreError::IoError) // XXX proper handle
+        return Err(CoreError::IoError); // XXX proper handle
     }
+
+    let mut ins: Vec<(String, i32)> = Vec::new();
+    let mut outs: Vec<(String, i32)> = Vec::new();
+
+    println!("{:?}", ledger);
+    println!("------\n");
+
+    for block_ledger in ledger {
+        for ledger_entry in block_ledger {
+            ins.push((ledger_entry.1, ledger_entry.2));
+            outs.push((ledger_entry.0, ledger_entry.2));
+        }
+    }
+
+    let mut balances: Vec<(String, i32)> = Vec::new();
+    let mut in_balances: Vec<(String, i32)> = Vec::new();
+    let mut addresses: Vec<String> = Vec::new();
+
+    println!("INS: {:?}\n", ins);
+    println!("OUTS: {:?}\n", outs);
+
+    for (i, e) in ins.into_iter().enumerate() {
+        println!("[{}] | {:?}", i, e);
+        if !addresses.contains(&e.0) {
+            addresses.push(e.0);
+        }
+    }
+
+    println!("\n");
+
+    for (i, e) in outs.into_iter().enumerate() {
+        println!("[{}] | {:?}", i, e);
+        if !addresses.contains(&e.0) && e.0 != "0" {
+            addresses.push(e.0);
+        }
+    }
+
+    println!("\n");
+
+    println!("{:?}", addresses);
+
+    println!("\n");
+
+    println!("{:?}\n", balances);
+
+    Ok(())
 }
